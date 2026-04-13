@@ -1,4 +1,4 @@
-import { Users, Moon, Cloud, Calendar, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Users, Moon, Cloud, Calendar, AlertTriangle, CheckCircle2, Shield } from 'lucide-react';
 import { useMemo } from 'react';
 import { Flight, CurrencyEvent } from '../types';
 import { calculateCurrency } from '../utils/carsCalculator';
@@ -7,6 +7,16 @@ export default function Dashboard({ flights, events }: { flights: Flight[]; even
   const currency = useMemo(() => calculateCurrency(flights, events, new Date('2026-04-12')), [flights, events]);
 
   const cards = [
+    {
+      title: '5-Year Recency',
+      icon: Shield,
+      status: currency.fiveYear.current,
+      count: currency.fiveYear.current ? 'OK' : 'EXPIRED',
+      detail: `Last flight: ${currency.fiveYear.lastFlight || 'ÃÂ¢ÃÂÃÂ'}`,
+      expires: currency.fiveYear.expires,
+      ref: 'CAR 401.05(1)(a)',
+      color: 'emerald'
+    },
     {
       title: 'Passengers Ã¢ÂÂ Day',
       icon: Users,
@@ -56,7 +66,7 @@ export default function Dashboard({ flights, events }: { flights: Flight[]; even
         <p className="text-slate-400">Transport Canada CAR 401.05 Ã¢ÂÂ¢ Verified against official regulations</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
         {cards.map((card) => {
           const Icon = card.icon;
           return (
