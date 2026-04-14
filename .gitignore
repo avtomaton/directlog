@@ -1,0 +1,13 @@
+node_modules/
+/frontend/dist-single/
+**/package-lock.json
+*.pyc
+*.pyo
+/.idea/
+__pycache__
+.pytest_cache
+backend/data/*.db
+backup/*
+data/*
+frontend/dist/*
+
