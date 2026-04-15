@@ -99,6 +99,33 @@ def add_flight():
     finally:
         conn.close()
 
+@app.route('/api/settings')
+def get_settings():
+    conn = get_db()
+    try:
+        cur = conn.execute("SELECT key, value FROM settings WHERE key = 'app_settings'").fetchone()
+        if cur:
+            import json
+            return jsonify(json.loads(cur['value']))
+        return jsonify({})
+    finally:
+        conn.close()
+
+@app.route('/api/settings', methods=['POST'])
+def save_settings():
+    conn = get_db()
+    try:
+        import json
+        d = request.json
+        cur = conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ('app_settings', json.dumps(d))
+        )
+        conn.commit()
+        return jsonify({'status': 'ok'}), 200
+    finally:
+        conn.close()
+
 @app.route('/api/currency')
 def currency():
     conn = get_db()
@@ -216,4 +243,9 @@ def currency():
 
 if __name__ == '__main__':
     os.makedirs('data', exist_ok=True)
+    # Ensure settings table exists
+    conn = get_db()
+    conn.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
+    conn.commit()
+    conn.close()
     app.run(debug=True, port=5001)

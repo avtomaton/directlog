@@ -76,3 +76,17 @@ export interface CSVMapping {
   nightLandings: string;
   remarks: string;
 }
+
+export type Regulation = 'CARs' | 'FAA' | 'EASA';
+
+export interface AppSettings {
+  regulation: Regulation;
+  homeBase: string;
+  nightDefinition: 'sunset_30' | 'custom';
+  nightStartTime: string; // e.g. 'sunset+30' meaning sunset + 30 min
+  nightEndTime: string;   // e.g. 'sunrise-30' meaning sunrise - 30 min
+  nightLandingStart: string; // e.g. 'sunset+60' meaning sunset + 1h
+  nightLandingEnd: string;   // e.g. 'sunrise-60' meaning sunrise - 1h
+  totalTimeDecimals: number; // 1, 2, or 3
+  totalTimeUnit: 'hours' | 'minutes'; // how to display totals
+}

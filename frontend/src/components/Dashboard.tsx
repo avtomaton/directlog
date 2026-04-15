@@ -1,12 +1,14 @@
-import { Users, Moon, Cloud, Calendar, Shield, AlertTriangle, CheckCircle2, Clock, TrendingUp } from 'lucide-react';
+import { Users, Moon, Cloud, Calendar, AlertTriangle, CheckCircle2, Clock, TrendingUp } from 'lucide-react';
 import { useMemo } from 'react';
-import { Flight, CurrencyEvent } from '../types';
+import { Flight, CurrencyEvent, AppSettings } from '../types';
 import { calculateCurrency } from '../utils/carsCalculator';
+import { calculateFAACurrency } from '../utils/faaCalculator';
+import { calculateEASACurrency } from '../utils/easaCalculator';
 
 interface Props {
   flights: Flight[];
   events: CurrencyEvent[];
-  onLogReview: () => void;  // Fix: was missing from props type
+  settings: AppSettings;
 }
 
 // Returns days until a date string (negative = already past)
@@ -51,21 +53,27 @@ const STATUS_STYLES: Record<CardStatus, {
   },
 };
 
-export default function Dashboard({ flights, events, onLogReview }: Props) {
-  const currency = useMemo(
-    () => calculateCurrency(flights, events, new Date()),
-    [flights, events]
-  );
+export default function Dashboard({ flights, events, settings }: Props) {
+  const currency = useMemo(() => {
+    switch (settings.regulation) {
+      case 'FAA':
+        return calculateFAACurrency(flights, events, new Date());
+      case 'EASA':
+        return calculateEASACurrency(flights, events, new Date());
+      default:
+        return calculateCurrency(flights, events, new Date());
+    }
+  }, [flights, events, settings.regulation]);
 
   const cards = [
     {
       title:   '5-Year Recency',
-      icon:    Shield,
+      icon:    Cloud,
       status:  getStatus(currency.fiveYear.current, currency.fiveYear.expires),
       count:   currency.fiveYear.current ? 'Current' : 'Lapsed',
       detail:  `Last flight: ${currency.fiveYear.lastFlight ?? '—'}`,
       expires: currency.fiveYear.expires,
-      ref:     'CAR 401.05(1)',
+      ref:     settings.regulation === 'FAA' ? '14 CFR 61.57(a)' : settings.regulation === 'EASA' ? 'Part-FCL.060' : 'CAR 401.05(1)',
       // Progress: years since last flight out of 5
       progress: currency.fiveYear.lastFlight
         ? Math.min(100, (1 - (Date.now() - new Date(currency.fiveYear.lastFlight).getTime()) / (5 * 365.25 * 86_400_000)) * 100)
@@ -78,7 +86,7 @@ export default function Dashboard({ flights, events, onLogReview }: Props) {
       count:   `${currency.passengerDay.count}/5 landings`,
       detail:  `Last: ${currency.passengerDay.lastDate ?? '—'}`,
       expires: currency.passengerDay.expires,
-      ref:     'CAR 401.05(2)(b)(i)',
+      ref:     settings.regulation === 'FAA' ? '14 CFR 61.57(a)(1)' : settings.regulation === 'EASA' ? 'Part-FCL.740' : 'CAR 401.05(2)(b)(i)',
       progress: Math.min(100, (currency.passengerDay.count / 5) * 100),
     },
     {
@@ -88,7 +96,7 @@ export default function Dashboard({ flights, events, onLogReview }: Props) {
       count:   `${currency.passengerNight.count}/5 landings`,
       detail:  `Need ${Math.max(0, 5 - currency.passengerNight.count)} more`,
       expires: currency.passengerNight.expires,
-      ref:     'CAR 401.05(2)(b)(ii)',
+      ref:     settings.regulation === 'FAA' ? '14 CFR 61.57(a)(2)' : settings.regulation === 'EASA' ? 'Part-FCL.060' : 'CAR 401.05(2)(b)(ii)',
       progress: Math.min(100, (currency.passengerNight.count / 5) * 100),
     },
     {
@@ -102,7 +110,7 @@ export default function Dashboard({ flights, events, onLogReview }: Props) {
         ? 'IPC within 12 months'
         : (currency.ifr.lastTest ? `IPC: ${currency.ifr.lastTest}` : 'No IPC on record'),
       expires: currency.ifr.testDue,
-      ref:     'CAR 401.05(3) & (3.1)',
+      ref:     settings.regulation === 'FAA' ? '14 CFR 61.57(c)' : settings.regulation === 'EASA' ? 'Part-FCL.740.H' : 'CAR 401.05(3) & (3.1)',
       // Progress: use approaches / 6 when not in grace, else IPC age
       progress: currency.ifr.inGracePeriod
         ? 100
@@ -117,7 +125,7 @@ export default function Dashboard({ flights, events, onLogReview }: Props) {
         : 'Not logged',
       detail:  `Last: ${currency.twoYear.lastActivity ?? '—'}`,
       expires: currency.twoYear.due,
-      ref:     'CAR 401.05(2)(a)',
+      ref:     settings.regulation === 'FAA' ? '14 CFR 61.57(b)' : settings.regulation === 'EASA' ? 'Part-FCL.740' : 'CAR 401.05(2)(a)',
       progress: currency.twoYear.lastActivity
         ? Math.min(100, (1 - (Date.now() - new Date(currency.twoYear.lastActivity).getTime()) / (2 * 365.25 * 86_400_000)) * 100)
         : 0,
@@ -177,7 +185,13 @@ export default function Dashboard({ flights, events, onLogReview }: Props) {
     <div>
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight mb-2">Currency Dashboard</h1>
-        <p className="text-slate-400 text-sm">Transport Canada CARs 401.05 · Verified against official regulations</p>
+        <p className="text-slate-400 text-sm">
+          {settings.regulation === 'FAA'
+            ? 'FAA 14 CFR Part 61.57 · Recent flight experience requirements'
+            : settings.regulation === 'EASA'
+            ? 'EASA Part-FCL · Privileges revalidation requirements'
+            : 'Transport Canada CARs 401.05 · Verified against official regulations'}
+        </p>
       </div>
 
       {/* Currency cards — colored left border (v1) + pill badge (v0) */}
@@ -331,30 +345,29 @@ export default function Dashboard({ flights, events, onLogReview }: Props) {
             </div>
           </div>
 
-          {/* Log Review CTA */}
-          <button
-            onClick={onLogReview}
-            className="w-full glass rounded-2xl p-4 text-left hover:bg-white/10 transition-colors border border-primary/30 group"
-          >
-            <div className="flex items-center gap-3">
-              <Shield className="w-5 h-5 text-primary shrink-0" />
-              <div>
-                <div className="text-sm font-medium group-hover:text-primary transition-colors">Log Flight Review / IPC</div>
-                <div className="text-xs text-slate-400 mt-0.5">Record a review or proficiency check</div>
-              </div>
-            </div>
-          </button>
         </div>
       </div>
 
-      {/* CARs note */}
+      {/* Regulation-specific notes */}
       <div className="mt-6 glass rounded-2xl p-4 border border-primary/20">
         <div className="flex gap-3">
           <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-          <p className="text-xs text-slate-400 leading-relaxed">
-            <span className="text-slate-300 font-medium">CARs 401.05 implementation notes: </span>
-            IFR grace period is <strong className="text-slate-300">12 months</strong> after IPC/PPC per (3.1) — after that, 6 approaches + 6 instrument hours in the preceding 6 months are required, and the IPC must still be within 24 months. Day/night passenger currency uses landing counts as a proxy for takeoffs per standard logbook practice (CARs requires 5 T/O + 5 ldg). All periods use calendar months.
-          </p>
+          {settings.regulation === 'FAA' ? (
+            <p className="text-xs text-slate-400 leading-relaxed">
+              <span className="text-slate-300 font-medium">FAA 14 CFR 61.57 implementation notes: </span>
+              Day/night passenger currency requires <strong className="text-slate-300">3 takeoffs and 3 landings</strong> within the preceding 90 days per 61.57(a)(1)-(a)(2). Night landings are counted during the period from 1 hour after sunset to 1 hour before sunrise. Flight review required per 61.57(b) every 24 calendar months. IFR currency requires 6 instrument approaches and instrument time within preceding 6 months per 61.57(c), or a valid IPC.
+            </p>
+          ) : settings.regulation === 'EASA' ? (
+            <p className="text-xs text-slate-400 leading-relaxed">
+              <span className="text-slate-300 font-medium">EASA Part-FCL implementation notes: </span>
+              PPL(A) privileges require either a proficiency check within 24 months or <strong className="text-slate-300">12 hours PIC including 12 takeoffs/landings</strong> in the preceding 12 months per FCL.740.A. Night rating requires 5 night flights within 24 months. IFR currency requires 6 approaches + 2 hours instrument time in 6 months, or a proficiency check within 12 months.
+            </p>
+          ) : (
+            <p className="text-xs text-slate-400 leading-relaxed">
+              <span className="text-slate-300 font-medium">CARs 401.05 implementation notes: </span>
+              IFR grace period is <strong className="text-slate-300">12 months</strong> after IPC/PPC per (3.1) — after that, 6 approaches + 6 instrument hours in the preceding 6 months are required, and the IPC must still be within 24 months. Day/night passenger currency uses landing counts as a proxy for takeoffs per standard logbook practice (CARs requires 5 T/O + 5 ldg). All periods use calendar months.
+            </p>
+          )}
         </div>
       </div>
     </div>

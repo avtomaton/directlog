@@ -1,10 +1,19 @@
-import { useState, useMemo } from 'react';
-import { Search, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Search, Download, ChevronLeft, ChevronRight, Printer } from 'lucide-react';
 import { Flight } from '../types';
+import { AppSettings } from '../types';
 
 const PER_PAGE = 20;
 
-export default function Logbook({ flights }: { flights: Flight[] }) {
+function formatTime(hours: number, decimals: number, unit: 'hours' | 'minutes'): string {
+  if (!hours || hours === 0) return '—';
+  if (unit === 'minutes') return Math.round(hours * 60).toString();
+  return hours.toFixed(decimals);
+}
+
+export default function Logbook({ flights, settings }: { flights: Flight[]; settings?: AppSettings }) {
+  const decimals = settings?.totalTimeDecimals ?? 1;
+  const unit = settings?.totalTimeUnit ?? 'hours';
   const [q,    setQ]    = useState('');
   const [ac,   setAc]   = useState('all');
   const [page, setPage] = useState(1);
@@ -32,12 +41,51 @@ export default function Logbook({ flights }: { flights: Flight[] }) {
   const handleFilterChange = (fn: () => void) => { fn(); setPage(1); };
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const slice = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const [allRows, setAllRows] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setAllRows(true);
+    window.addEventListener('beforeprint', handler);
+    return () => {
+      window.removeEventListener('beforeprint', handler);
+      setAllRows(false);
+    };
+  }, []);
+
+  const displayRows = allRows ? filtered : filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   const totalHours = flights.reduce((s, f) => s + f.air_time, 0);
   const totalPIC   = flights.reduce((s, f) => s + f.pic,      0);
 
-  const fmt = (n?: number) => (n && n > 0) ? n.toFixed(1) : '—';
+  const fmt = (n?: number) => formatTime(n ?? 0, decimals, unit);
+
+  const exportCSV = () => {
+    const headers = ['Date', 'Aircraft', 'Type', 'From', 'To', 'Air Time', 'PIC', 'Night', 'Actual IMC', 'Simulated', 'Day Ldg', 'Night Ldg', 'Approaches', 'Remarks'];
+    const rows = filtered.map(f => [
+      f.date, f.aircraft, f.type, f.from, f.to,
+      f.air_time.toFixed(decimals),
+      f.pic.toFixed(decimals),
+      f.night ?? 0,
+      f.actual_imc ?? 0,
+      f.simulated ?? 0,
+      f.ldg_day,
+      f.ldg_night,
+      f.approaches?.length ?? 0,
+      `"${(f.remarks ?? '').replace(/"/g, '""')}"`,
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `logbook_export_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const printLogbook = () => {
+    window.print();
+  };
 
   return (
     <div>
@@ -66,8 +114,19 @@ export default function Logbook({ flights }: { flights: Flight[] }) {
             <option value="all">All Aircraft</option>
             {aircraftOptions.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
-          <button className="p-2 rounded-xl glass border border-white/10 hover:bg-white/10" title="Export CSV">
+          <button
+            onClick={exportCSV}
+            className="p-2 rounded-xl glass border border-white/10 hover:bg-white/10"
+            title="Export CSV"
+          >
             <Download className="w-4 h-4" />
+          </button>
+          <button
+            onClick={printLogbook}
+            className="p-2 rounded-xl glass border border-white/10 hover:bg-white/10"
+            title="Print"
+          >
+            <Printer className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -83,7 +142,7 @@ export default function Logbook({ flights }: { flights: Flight[] }) {
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-white/5">
-              {slice.map(f => (
+              {displayRows.map(f => (
                 <tr key={f.id} className="hover:bg-white/5 transition-colors">
                   <td className="px-3 py-3 font-mono text-xs text-slate-400">{f.date}</td>
                   <td className="px-3 py-3">
@@ -93,8 +152,8 @@ export default function Logbook({ flights }: { flights: Flight[] }) {
                   <td className="px-3 py-3 font-mono text-xs">
                     {f.from} <span className="text-slate-600 mx-1">→</span> {f.to}
                   </td>
-                  <td className="px-3 py-3 text-right font-mono">{f.air_time.toFixed(1)}</td>
-                  <td className="px-3 py-3 text-right font-mono">{f.pic.toFixed(1)}</td>
+                  <td className="px-3 py-3 text-right font-mono">{formatTime(f.air_time, decimals, unit)}</td>
+                  <td className="px-3 py-3 text-right font-mono">{formatTime(f.pic, decimals, unit)}</td>
                   <td className="px-3 py-3 text-right font-mono text-slate-400">{fmt(f.night)}</td>
                   <td className="px-3 py-3 text-right font-mono text-slate-400">{fmt(f.actual_imc)}</td>
                   <td className="px-3 py-3 text-right font-mono text-slate-400">{fmt(f.simulated)}</td>
@@ -110,7 +169,7 @@ export default function Logbook({ flights }: { flights: Flight[] }) {
                   <td className="px-3 py-3 text-xs text-slate-400 max-w-[130px] truncate">{f.remarks}</td>
                 </tr>
               ))}
-              {slice.length === 0 && (
+              {displayRows.length === 0 && (
                 <tr>
                   <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
                     No flights match your filters.

@@ -37,3 +37,17 @@
 ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded; }
 .dark ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
 .dark ::-webkit-scrollbar-thumb { background: rgba(14,165,233,0.5); }
+
+/* Print styles */
+@media print {
+  header, nav, button, .no-print { display: none !important; }
+  body { @apply bg-white text-black; }
+  .glass { @apply bg-white border-none shadow-none; }
+  main { max-width: none !important; padding: 0 !important; }
+  table { font-size: 10px; }
+  thead { @apply border-b border-black; }
+  th, td { padding: 4px 8px; }
+  tr { page-break-inside: avoid; }
+  /* Show all rows (remove pagination) */
+  .overflow-x-auto { overflow: visible !important; }
+}

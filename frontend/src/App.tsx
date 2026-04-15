@@ -1,13 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Moon, Sun, Plane, Upload, Shield, PlusCircle } from 'lucide-react';
+import { Moon, Sun, Plane, Upload, PlusCircle, Settings } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Logbook from './components/Logbook';
 import AddFlight from './components/AddFlight';
 import Reports from './components/Reports';
 import Aircraft from './components/Aircraft';
 import CSVImporter from './components/CSVImporter';
-import FlightReviewModal from './components/FlightReviewModal';
-import { Flight, Aircraft as AircraftType, CurrencyEvent } from './types';
+import SettingsPage from './components/Settings';
+import { Flight, Aircraft as AircraftType, CurrencyEvent, AppSettings } from './types';
+
+const defaultSettings: AppSettings = {
+  regulation: 'CARs',
+  homeBase: '',
+  nightDefinition: 'sunset_30',
+  nightStartTime: 'sunset+30',
+  nightEndTime: 'sunrise-30',
+  nightLandingStart: 'sunset+60',
+  nightLandingEnd: 'sunrise-60',
+  totalTimeDecimals: 1,
+  totalTimeUnit: 'hours',
+};
 
 export default function App() {
   const [tab,            setTab]            = useState('dashboard');
@@ -16,8 +28,8 @@ export default function App() {
   const [aircraft,       setAircraft]       = useState<AircraftType[]>([]);
   const [events,         setEvents]         = useState<CurrencyEvent[]>([]);
   const [showImporter,   setShowImporter]   = useState(false);
-  const [showReview,     setShowReview]     = useState(false);
   const [showAddFlight,  setShowAddFlight]  = useState(false);
+  const [settings,       setSettings]       = useState<AppSettings>(defaultSettings);
 
   const loadData = useCallback(async () => {
     try {
@@ -35,6 +47,35 @@ export default function App() {
       setAircraft(sampleAircraft);
       setEvents(sampleEvents);
     }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('settings', JSON.stringify(settings));
+    // Also persist to backend
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    }).catch(() => { /* ignore */ });
+  }, [settings]);
+
+  // Load settings from backend on mount (with localStorage fallback)
+  useEffect(() => {
+    const savedLocal = localStorage.getItem('settings');
+    if (savedLocal) {
+      try {
+        const parsed = JSON.parse(savedLocal);
+        if (parsed.regulation) setSettings(parsed);
+      } catch {}
+    }
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.regulation) {
+          setSettings(data);
+        }
+      })
+      .catch(() => { /* ignore */ });
   }, []);
 
   useEffect(() => {
@@ -69,6 +110,7 @@ export default function App() {
     { id: 'logbook',   label: 'Logbook'   },
     { id: 'reports',   label: 'Reports'   },
     { id: 'aircraft',  label: 'Aircraft'  },
+    { id: 'settings',  label: 'Settings'  },
   ];
 
   return (
@@ -82,7 +124,6 @@ export default function App() {
               </div>
               <div>
                 <span className="text-xl font-bold tracking-tight">SkyLog Pro</span>
-                <div className="text-[10px] text-primary font-medium -mt-0.5">CARs 401.05 VERIFIED</div>
               </div>
             </div>
 
@@ -98,14 +139,6 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setShowReview(true)}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl glass hover:bg-slate-100 dark:hover:bg-white/10 text-xs sm:text-sm transition-colors"
-              >
-                <Shield className="w-4 h-4" />
-                <span className="hidden md:inline">Log Review</span>
-              </button>
-
-              <button
                 onClick={() => setShowImporter(true)}
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl glass hover:bg-slate-100 dark:hover:bg-white/10 text-xs sm:text-sm transition-colors"
               >
@@ -113,10 +146,18 @@ export default function App() {
                 <span className="hidden md:inline">Import</span>
               </button>
 
+              <button
+                onClick={() => setTab('settings')}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl glass hover:bg-slate-100 dark:hover:bg-white/10 text-xs sm:text-sm transition-colors"
+                title="Settings"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+
               <div className="hidden sm:block text-right mr-1">
-                <div className="text-sm font-medium">C. Aviator</div>
+                <div className="text-sm font-medium">Pilot</div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {flights.reduce((s, f) => s + f.air_time, 0).toFixed(1)} hrs · CYMM
+                  {flights.reduce((s, f) => s + f.air_time, 0).toFixed(1)} hrs · {settings.homeBase || '—'}
                 </div>
               </div>
 
@@ -157,19 +198,19 @@ export default function App() {
             <Dashboard
               flights={flights}
               events={events}
-              onLogReview={() => setShowReview(true)}
+              settings={settings}
             />
           )}
-          {tab === 'logbook'  && <Logbook  flights={flights} />}
+          {tab === 'logbook'  && <Logbook  flights={flights} settings={settings} />}
           {tab === 'reports'  && <Reports  flights={flights} />}
           {tab === 'aircraft' && <Aircraft aircraft={aircraft} />}
+          {tab === 'settings' && <SettingsPage settings={settings} onSave={setSettings} />}
         </div>
       </main>
 
       {/* Modals */}
       {showAddFlight  && <AddFlight aircraft={aircraft} onSave={loadData} onClose={() => setShowAddFlight(false)} />}
       {showImporter   && <CSVImporter onClose={() => setShowImporter(false)} onImport={loadData} />}
-      {showReview     && <FlightReviewModal onClose={() => setShowReview(false)} onSave={loadData} />}
     </div>
   );
 }

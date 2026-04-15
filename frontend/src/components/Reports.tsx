@@ -3,7 +3,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, P
 import { Flight } from '../types';
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElement, LineElement, Tooltip, Legend);
 
-export default function Reports({ flights }: { flights: Flight[] }) {
+export default function Reports({ flights: _flights }: { flights: Flight[] }) {
   const chartOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } } } };
   
   const landingsData = { labels: ['May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr'], datasets: [{ data: [8,5,12,7,9,11,6,14,10,8,13,9], backgroundColor: '#0ea5e9', borderRadius: 6 }] };
