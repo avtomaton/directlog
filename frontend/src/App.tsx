@@ -123,7 +123,7 @@ export default function App() {
                 <Plane className="w-5 h-5 text-white" />
               </div>
               <div>
-                <span className="text-xl font-bold tracking-tight">SkyLog Pro</span>
+                <span className="text-xl font-bold tracking-tight">DirectLog</span>
               </div>
             </div>
 
