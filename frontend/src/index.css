@@ -12,6 +12,14 @@
   /* Dark theme */
   .dark body { @apply bg-[#0c1929] text-slate-100; }
   .dark { color-scheme: dark; }
+  
+  /* Fix dropdown styling for dark mode */
+  select option {
+    @apply bg-white text-slate-900;
+  }
+  .dark select option {
+    @apply bg-gray-900 text-white;
+  }
 }
 
 @layer components {

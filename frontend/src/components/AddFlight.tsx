@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { Aircraft } from '../types';
+import { Plus, X, AlertCircle, CheckCircle2, LogOut, LogIn, PlaneTakeoff, PlaneLanding } from 'lucide-react';
+import { Aircraft, FlightTemplate } from '../types';
+import { calculateDuration, calculateNightTime, evaluateCalculation, timeToHours } from '../utils/flightUtils';
 
 interface Props {
   aircraft: Aircraft[];
+  settings: any;
+  templates?: FlightTemplate[];
+  initialFlight?: any;
   onSave: () => void;
   onClose: () => void;
 }
@@ -15,45 +19,187 @@ const EMPTY_FORM = {
   aircraft:   '',
   from:       '',
   to:         '',
+  
+  // Block times
+  start_time:     '',
+  takeoff_time:   '',
+  landing_time:   '',
+  shutdown_time:  '',
+  
+  // Time fields
   air_time:   '',
   pic:        '',
   dual:       '0',
   night:      '0',
   actual_imc: '0',
   simulated:  '0',
+  ifr:        '0',
+  
+  // Role time
+  sic:        '0',
+  pilot_flying: '0',
+  right_seat: '0',
+  multi_pilot: '0',
+  
+  // Cross country
+  xc:         '0',
+  xc_over_50nm: '0',
+  
+  // Other time fields
+  holds: '0',
+  aerobatic_time: '0',
+  banner_towing: '0',
+  glider_towing: '0',
+  formation: '0',
+  low_level: '0',
+  mountain: '0',
+  offshore: '0',
+  bush: '0',
+  combat: '0',
+  sling_load: '0',
+  hoist: '0',
+  
+  // Flags
+  ems:        false,
+  search_and_rescue: false,
+  aerial_work: false,
+  training: false,
+  checkride: false,
+  flight_review: false,
+  ipc: false,
+  
   ldg_day:    '1',
-  ldg_night:  '0',    // Fix: was missing from form
+  ldg_night:  '0',
   remarks:    '',
 };
 
-export default function AddFlight({ aircraft, onSave, onClose }: Props) {
-  const [f, setF]           = useState({ ...EMPTY_FORM, aircraft: aircraft[0]?.reg ?? '' });
+export default function AddFlight(props: Props) {
+  const [f, setF]           = useState(() => {
+    if (props.initialFlight) {
+      const copy = { ...EMPTY_FORM };
+      Object.keys(props.initialFlight).forEach(key => {
+        if (key in copy && key !== 'start_time' && key !== 'shutdown_time' && key !== 'takeoff_time' && key !== 'landing_time' && key !== 'id' && key !== 'created_at') {
+          (copy as any)[key] = props.initialFlight[key];
+        }
+      });
+      return copy;
+    }
+    return { ...EMPTY_FORM, aircraft: props.aircraft[0]?.reg ?? '' };
+  });
   const [approaches, setAp] = useState<{ type: string; airport: string; runway: string }[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [toast, setToast]   = useState<Toast | null>(null);
   const firstRef = useRef<HTMLInputElement>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
 
-  // Focus first input when modal opens
-  useEffect(() => { firstRef.current?.focus(); }, []);
+  // Get current template
+  const currentTemplate = props.templates?.find(t => t.id === selectedTemplate);
+
+  // Mandatory fields that are always visible
+  const MANDATORY_FIELDS = ['date', 'aircraft', 'from', 'to', 'start_time', 'takeoff_time', 'landing_time', 'shutdown_time', 'air_time'];
+  
+  // Basic flight fields that are always shown
+  const BASIC_FIELDS = ['pic', 'sic', 'dual', 'night', 'ifr', 'actual_imc', 'simulated', 'xc', 'ldg_day', 'ldg_night'];
+
+  // Check if field should be visible
+  const isFieldVisible = (field: string): boolean => {
+    if (MANDATORY_FIELDS.includes(field)) return true;
+    if (BASIC_FIELDS.includes(field)) return true;
+    if (additionalFields.includes(field)) return true;
+    if (!currentTemplate) return false; // Only show basic fields by default
+    return currentTemplate.visible_fields.includes(field);
+  };
+
+  // Focus first input and select default template when modal opens
+  useEffect(() => { 
+    firstRef.current?.focus();
+    if (!props.initialFlight && props.settings?.defaultTemplateId) {
+      setSelectedTemplate(props.settings.defaultTemplateId);
+    }
+  }, []);
 
   // Close on Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') props.onClose(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, [props.onClose]);
 
-  // Auto-fill PIC from air_time if PIC is empty or was auto-filled
-  const picAutoFilled = useRef(true);
-  const setField = (key: string, value: string) => {
+  // Fields management
+  const [additionalFields, setAdditionalFields] = useState<string[]>([]);
+  const [showPropertyMenu, setShowPropertyMenu] = useState(false);
+  
+  const picAutoFilled = useRef(false);
+  const setField = (key: string, value: string | boolean | number) => {
     setF(prev => {
       const next = { ...prev, [key]: value };
-      if (key === 'air_time' && picAutoFilled.current) next.pic = value;
-      if (key === 'pic') picAutoFilled.current = false;
       return next;
     });
     setErrors(prev => { const e = { ...prev }; delete e[key]; return e; });
+  };
+
+  // Populate all fields based on selected template
+  const populateFields = () => {
+    if (!f.start_time && !f.shutdown_time && !f.air_time) return;
+    
+    let totalTime: number;
+    if (f.start_time && f.shutdown_time) {
+      totalTime = calculateDuration(f.start_time, f.shutdown_time);
+      setField('air_time', totalTime.toFixed(1));
+    } else {
+      totalTime = parseFloat(f.air_time) || 0;
+    }
+
+    // Calculate night time
+    if (f.start_time && f.shutdown_time && props.settings) {
+      const nightHours = calculateNightTime(f.date, f.start_time, f.shutdown_time, props.settings);
+      if (nightHours > 0) {
+        setField('night', nightHours.toFixed(1));
+      }
+    }
+
+    // Apply template defaults
+    if (currentTemplate?.defaults) {
+      Object.entries(currentTemplate.defaults).forEach(([key, value]) => {
+        setField(key, value as string | boolean | number);
+      });
+    }
+
+    // Apply template calculations
+    if (currentTemplate?.calculations) {
+      const takeoff = (f as any).takeoff_time;
+      const landing = (f as any).landing_time;
+      
+      let ifrTime: number;
+      if (takeoff && landing) {
+        // Use actual flight time if takeoff/landing are specified
+        ifrTime = calculateDuration(takeoff, landing);
+      } else {
+        // Use deduction rules otherwise
+        ifrTime = Math.max(0, totalTime - (props.settings?.ifrDeductionMinutes || 12) / 60);
+      }
+
+      const values: Record<string, number> = {
+        air_time: totalTime,
+        start: timeToHours(f.start_time),
+        shutdown: timeToHours(f.shutdown_time),
+        takeoff: timeToHours(takeoff),
+        landing: timeToHours(landing),
+        total: totalTime,
+        ifr_time: ifrTime,
+      };
+
+      Object.entries(currentTemplate.calculations).forEach(([key, expr]) => {
+        // Never auto-populate actual_imc - must be entered manually
+        if (key === 'actual_imc') return;
+        
+        const result = evaluateCalculation(expr as string, values);
+        if (!isNaN(result)) {
+          setField(key, result.toFixed(1));
+        }
+      });
+    }
   };
 
   const validate = () => {
@@ -75,19 +221,38 @@ export default function AddFlight({ aircraft, onSave, onClose }: Props) {
     setLoading(true);
     try {
       // Fix: use the full type name from the aircraft record
-      const acType = aircraft.find(a => a.reg === f.aircraft)?.type ?? '';
+      const acType = props.aircraft.find(a => a.reg === f.aircraft)?.type ?? '';
       const payload = {
         ...f,
         type:       acType,
         air_time:   parseFloat(f.air_time),
         pic:        parseFloat(f.pic  || f.air_time),
         dual:       parseFloat(f.dual),
+        sic:        parseFloat(f.sic),
         night:      parseFloat(f.night),
+        ifr:        parseFloat((f as any).ifr || 0),
         actual_imc: parseFloat(f.actual_imc),
         simulated:  parseFloat(f.simulated),
+        xc:         parseFloat(f.xc),
+        xc_over_50nm: parseFloat(f.xc_over_50nm),
+        right_seat: parseFloat(f.right_seat),
+        multi_pilot: parseFloat(f.multi_pilot),
+        pilot_flying: parseFloat(f.pilot_flying || '0'),
+        holds: parseInt((f as any).holds || 0, 10),
+        ems: (f as any).ems || false,
+        search_and_rescue: (f as any).search_and_rescue || false,
+        aerial_work: (f as any).aerial_work || false,
+        training: (f as any).training || false,
+        checkride: (f as any).checkride || false,
+        flight_review: (f as any).flight_review || false,
+        ipc: (f as any).ipc || false,
         ldg_day:    parseInt(f.ldg_day,   10),
         ldg_night:  parseInt(f.ldg_night, 10),
         approaches,
+        start_time: f.start_time || null,
+        takeoff_time: (f as any).takeoff_time || null,
+        landing_time: (f as any).landing_time || null,
+        shutdown_time: f.shutdown_time || null,
       };
       const res = await fetch('/api/flights', {
         method: 'POST',
@@ -96,12 +261,12 @@ export default function AddFlight({ aircraft, onSave, onClose }: Props) {
       });
       if (!res.ok) throw new Error(await res.text());
       setToast({ kind: 'success', msg: `Flight saved — ${f.aircraft} ${f.from}→${f.to} ${f.air_time} hrs` });
-      setTimeout(() => { onSave(); onClose(); }, 1200);
+      setTimeout(() => { props.onSave(); props.onClose(); }, 1200);
     } catch (err) {
       // Demo mode: save locally and show success
       console.warn('API unavailable (demo mode):', err);
       setToast({ kind: 'success', msg: `Flight logged (demo) — ${f.aircraft} ${f.from}→${f.to}` });
-      setTimeout(() => { onSave(); onClose(); }, 1200);
+      setTimeout(() => { props.onSave(); props.onClose(); }, 1200);
     } finally {
       setLoading(false);
     }
@@ -115,25 +280,46 @@ export default function AddFlight({ aircraft, onSave, onClose }: Props) {
   const inputClass = (key?: string) =>
     `w-full px-3 py-2.5 rounded-xl bg-white/5 border ${
       key && errors[key] ? 'border-red-500/60' : 'border-white/10'
-    } focus:border-primary focus:outline-none text-sm`;
+    } focus:border-primary focus:outline-none text-sm
+     [&>option]:bg-gray-900 [&>option]:text-white`;
 
-  const numericFields: [keyof typeof EMPTY_FORM, string][] = [
-    ['air_time',   'Air Time'],
-    ['pic',        'PIC'],
-    ['dual',       'Dual'],
-    ['night',      'Night'],
-    ['actual_imc', 'Actual IMC'],
-    ['simulated',  'Sim IMC'],
-    ['ldg_day',    'Day Ldg'],
-    ['ldg_night',  'Night Ldg'],  // Fix: was missing
+  const allAvailableFields: {id: string; label: string; type: 'time' | 'number' | 'boolean'}[] = [
+    { id: 'pic', label: 'PIC', type: 'time' },
+    { id: 'sic', label: 'SIC', type: 'time' },
+    { id: 'dual', label: 'Dual', type: 'time' },
+    { id: 'night', label: 'Night', type: 'time' },
+    { id: 'ifr', label: 'IFR', type: 'time' },
+    { id: 'actual_imc', label: 'Actual IMC', type: 'time' },
+    { id: 'simulated', label: 'Sim IMC', type: 'time' },
+    { id: 'xc', label: 'XC', type: 'time' },
+    { id: 'xc_over_50nm', label: 'XC >50nm', type: 'time' },
+    { id: 'right_seat', label: 'Right Seat', type: 'time' },
+    { id: 'multi_pilot', label: 'Multi Pilot', type: 'time' },
+    { id: 'pilot_flying', label: 'PF', type: 'time' },
+    { id: 'holds', label: 'Holds', type: 'number' },
+    { id: 'ldg_day', label: 'Day Ldg', type: 'number' },
+    { id: 'ldg_night', label: 'Night Ldg', type: 'number' },
+    { id: 'aerobatic_time', label: 'Aerobatic', type: 'time' },
+    { id: 'banner_towing', label: 'Banner Towing', type: 'time' },
+    { id: 'glider_towing', label: 'Glider Towing', type: 'time' },
+    { id: 'formation', label: 'Formation', type: 'time' },
+    { id: 'low_level', label: 'Low Level', type: 'time' },
+    { id: 'mountain', label: 'Mountain', type: 'time' },
+    { id: 'offshore', label: 'Offshore', type: 'time' },
+    { id: 'bush', label: 'Bush', type: 'time' },
+    { id: 'combat', label: 'Combat', type: 'time' },
+    { id: 'sling_load', label: 'Sling Load', type: 'time' },
+    { id: 'hoist', label: 'Hoist', type: 'time' },
   ];
+
+  const numericFields: [string, string][] = allAvailableFields.map(f => [f.id, f.label]);
 
   return (
     /* Backdrop */
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" aria-modal="true" role="dialog">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={props.onClose}
         aria-hidden="true"
       />
 
@@ -144,7 +330,7 @@ export default function AddFlight({ aircraft, onSave, onClose }: Props) {
           <h2 className="text-lg font-bold tracking-tight">Log a Flight</h2>
           <div className="flex items-center gap-3 text-xs text-slate-500">
             <span>Press <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-[10px]">Tab</kbd> to move · <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-[10px]">Esc</kbd> to close</span>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10">
+            <button onClick={props.onClose} className="p-1.5 rounded-lg hover:bg-white/10">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -171,10 +357,10 @@ export default function AddFlight({ aircraft, onSave, onClose }: Props) {
                 onChange={e => setField('aircraft', e.target.value)}
                 className={inputClass('aircraft')}
               >
-                {aircraft.length === 0
+                {props.aircraft.length === 0
                   ? <option value="">— no aircraft —</option>
-                  : aircraft.map(a => (
-                    <option key={a.reg} value={a.reg} className="bg-gray-900">
+                  : props.aircraft.map(a => (
+                    <option key={a.reg} value={a.reg}>
                       {a.reg} ({a.type})
                     </option>
                   ))}
@@ -205,24 +391,147 @@ export default function AddFlight({ aircraft, onSave, onClose }: Props) {
             </div>
           </div>
 
-          {/* Row 2: Numeric time fields */}
+          {/* Template selector */}
           <div>
-            <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Flight Times</label>
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-              {numericFields.map(([key, label]) => (
-                <div key={key}>
-                  <label className="block text-[10px] text-slate-500 mb-1 text-center">{label}</label>
-                  <input
-                    type="number"
-                    step={['ldg_day','ldg_night'].includes(key) ? '1' : '0.1'}
-                    min="0"
-                    value={(f as Record<string, string>)[key]}
-                    onChange={e => setField(key, e.target.value)}
-                    className={`${inputClass(key)} text-center font-mono px-2`}
-                  />
-                  {errors[key] && <p className="text-[10px] text-red-400 mt-0.5 text-center">{errors[key]}</p>}
-                </div>
+            <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">Flight Template</label>
+            <select
+              value={selectedTemplate ?? ''}
+              onChange={e => setSelectedTemplate(e.target.value ? parseInt(e.target.value) : null)}
+              className={inputClass()}
+            >
+              <option value="">— Default / All Fields —</option>
+              {props.templates?.map(t => (
+                <option key={t.id} value={t.id}>{t.icon} {t.name}</option>
               ))}
+            </select>
+          </div>
+
+          {/* Row 2: Block times + Total + Populate */}
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1 justify-center">
+                <LogOut className="w-3 h-3" /> Out
+              </label>
+              <input
+                type="time"
+                value={f.start_time}
+                onChange={e => setField('start_time', e.target.value)}
+                className={inputClass('start_time')}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1 justify-center">
+                <PlaneTakeoff className="w-3 h-3" /> Off
+              </label>
+              <input
+                type="time"
+                value={(f as any).takeoff_time || ''}
+                onChange={e => setField('takeoff_time', e.target.value)}
+                className={inputClass()}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1 justify-center">
+                <PlaneLanding className="w-3 h-3" /> On
+              </label>
+              <input
+                type="time"
+                value={(f as any).landing_time || ''}
+                onChange={e => setField('landing_time', e.target.value)}
+                className={inputClass()}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1 justify-center">
+                <LogIn className="w-3 h-3" /> In
+              </label>
+              <input
+                type="time"
+                value={f.shutdown_time}
+                onChange={e => setField('shutdown_time', e.target.value)}
+                className={inputClass('shutdown_time')}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">Total Time</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={f.air_time}
+                onChange={e => setField('air_time', e.target.value)}
+                className={`${inputClass('air_time')} font-mono`}
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={populateFields}
+                className="w-full px-4 py-2.5 rounded-xl bg-accent/20 hover:bg-accent/30 text-accent font-medium text-sm transition-colors"
+              >
+                🔄 Populate
+              </button>
+            </div>
+          </div>
+
+          {/* Row 3: Numeric time fields */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs text-slate-400 uppercase tracking-wider">Flight Times</label>
+              <div className="relative">
+                <button 
+                  onClick={() => setShowPropertyMenu(!showPropertyMenu)}
+                  className="flex items-center gap-1 text-xs text-primary hover:text-accent transition-colors"
+                >
+                  <Plus className="w-3 h-3" /> Add Property
+                </button>
+                {showPropertyMenu && (
+                  <div className="absolute right-0 top-6 z-20 bg-gray-900 border border-white/10 rounded-lg shadow-lg py-1 min-w-[160px]">
+                    {allAvailableFields
+                      .filter(f => !isFieldVisible(f.id) && !additionalFields.includes(f.id))
+                      .map(f => (
+                        <button
+                          key={f.id}
+                          onClick={() => {
+                            setAdditionalFields(prev => [...prev, f.id]);
+                            setShowPropertyMenu(false);
+                          }}
+                          className="w-full px-3 py-1.5 text-left text-xs hover:bg-white/10 text-slate-300"
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    {allAvailableFields.filter(f => !isFieldVisible(f.id) && !additionalFields.includes(f.id)).length === 0 && (
+                      <div className="px-3 py-2 text-xs text-slate-500">All fields visible</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+              {numericFields
+                .filter(([key]) => isFieldVisible(key))
+                .map(([key, label]) => (
+                  <div key={key} className="relative">
+                    <label className="block text-[10px] text-slate-500 mb-1 text-center">{label}</label>
+                    <input
+                      type="number"
+                      step={['ldg_day','ldg_night', 'holds'].includes(key) ? '1' : '0.1'}
+                      min="0"
+                      value={(f as any)[key] || '0'}
+                      onChange={e => setField(key, e.target.value)}
+                      className={`${inputClass(key)} text-center font-mono px-2 pr-6`}
+                    />
+                    {additionalFields.includes(key) && (
+                      <button 
+                        onClick={() => setAdditionalFields(prev => prev.filter(f => f !== key))}
+                        className="absolute right-1 top-5 p-0.5 text-slate-500 hover:text-red-400"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                    {errors[key] && <p className="text-[10px] text-red-400 mt-0.5 text-center">{errors[key]}</p>}
+                  </div>
+                ))}
             </div>
             <p className="text-[10px] text-slate-500 mt-1.5">Air Time auto-fills PIC. Night Ldg shown in accent color in logbook.</p>
           </div>
@@ -244,7 +553,7 @@ export default function AddFlight({ aircraft, onSave, onClose }: Props) {
                   <select
                     value={a.type}
                     onChange={e => updateApproach(i, 'type', e.target.value)}
-                    className="px-2 py-2 rounded-lg bg-white/5 border border-white/10 text-xs focus:border-primary focus:outline-none"
+                    className="px-2 py-2 rounded-lg bg-white/5 border border-white/10 text-xs focus:border-primary focus:outline-none [&>option]:bg-gray-900 [&>option]:text-white"
                   >
                     {['ILS','RNAV LPV','RNAV LNAV','VOR','NDB','LOC','RNP'].map(t => (
                       <option key={t} value={t}>{t}</option>
@@ -269,6 +578,55 @@ export default function AddFlight({ aircraft, onSave, onClose }: Props) {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Flags */}
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={(f as any).ems || false}
+                onChange={e => setField('ems', e.target.checked)}
+                className="rounded"
+              />
+              EMS / Medical
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={(f as any).training || false}
+                onChange={e => setField('training', e.target.checked)}
+                className="rounded"
+              />
+              Training
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={(f as any).checkride || false}
+                onChange={e => setField('checkride', e.target.checked)}
+                className="rounded"
+              />
+              Checkride
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={(f as any).flight_review || false}
+                onChange={e => setField('flight_review', e.target.checked)}
+                className="rounded"
+              />
+              Flight Review
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={(f as any).ipc || false}
+                onChange={e => setField('ipc', e.target.checked)}
+                className="rounded"
+              />
+              IPC
+            </label>
           </div>
 
           {/* Remarks */}
@@ -298,7 +656,7 @@ export default function AddFlight({ aircraft, onSave, onClose }: Props) {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={onClose}
+              onClick={props.onClose}
               disabled={loading}
               className="px-4 py-2 rounded-xl hover:bg-white/10 transition-colors text-sm disabled:opacity-50"
             >

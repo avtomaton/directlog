@@ -29,6 +29,11 @@ def flights():
                     'SELECT * FROM approaches WHERE flight_id=?', (f['id'],)
                 ).fetchall()
             ]
+            # Ensure all numeric fields are properly cast
+            numeric_fields = ['sic', 'xc', 'xc_over_50nm', 'right_seat', 'multi_pilot', 'pilot_flying']
+            for field in numeric_fields:
+                if flight[field] is None:
+                    flight[field] = 0.0
             result.append(flight)
         return jsonify(result)
     finally:
@@ -75,16 +80,29 @@ def add_flight():
             return jsonify({'error': 'date and aircraft are required'}), 400
         cur = conn.execute(
             '''INSERT INTO flights
-               (date, aircraft, type, from_ap, to_ap, air_time, pic, dual,
-                night, actual_imc, simulated, ldg_day, ldg_night, remarks)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+               (date, aircraft, type, from_ap, to_ap, start_time, takeoff_time, landing_time, shutdown_time,
+                air_time, pic, sic, dual, night, ifr, actual_imc, simulated,
+                xc, xc_over_50nm, right_seat, multi_pilot, pilot_flying,
+                holds, ems, search_and_rescue, aerial_work, training, checkride,
+                flight_review, ipc, ldg_day, ldg_night, remarks)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (
                 d['date'], d['aircraft'], d.get('type'),
                 d.get('from'), d.get('to'),
-                d.get('air_time', 0), d.get('pic', 0),
-                d.get('dual', 0),            # Fix: dual was missing from INSERT
-                d.get('night', 0), d.get('actual_imc', 0),
-                d.get('simulated', 0), d.get('ldg_day', 0),
+                d.get('start_time'), d.get('takeoff_time'), d.get('landing_time'), d.get('shutdown_time'),
+                d.get('air_time', 0), d.get('pic', 0), d.get('sic', 0),
+                d.get('dual', 0),
+                d.get('night', 0), d.get('ifr', 0), d.get('actual_imc', 0),
+                d.get('simulated', 0),
+                d.get('xc', 0), d.get('xc_over_50nm', 0),
+                d.get('right_seat', 0), d.get('multi_pilot', 0),
+                d.get('pilot_flying', 0),
+                d.get('holds', 0),
+                d.get('ems', False),
+                d.get('search_and_rescue', False), d.get('aerial_work', False),
+                d.get('training', False), d.get('checkride', False),
+                d.get('flight_review', False), d.get('ipc', False),
+                d.get('ldg_day', 0),
                 d.get('ldg_night', 0), d.get('remarks', '')
             )
         )
@@ -123,6 +141,75 @@ def save_settings():
         )
         conn.commit()
         return jsonify({'status': 'ok'}), 200
+    finally:
+        conn.close()
+
+@app.route('/api/templates')
+def get_templates():
+    conn = get_db()
+    try:
+        rows = conn.execute('SELECT * FROM flight_templates ORDER BY name').fetchall()
+        result = []
+        for row in rows:
+            tpl = dict(row)
+            import json
+            tpl['visible_fields'] = json.loads(tpl['visible_fields'])
+            tpl['calculations'] = json.loads(tpl['calculations'])
+            tpl['defaults'] = json.loads(tpl['defaults'])
+            result.append(tpl)
+        return jsonify(result)
+    finally:
+        conn.close()
+
+@app.route('/api/templates', methods=['POST'])
+def create_template():
+    conn = get_db()
+    try:
+        d = request.json
+        import json
+        cur = conn.execute(
+            '''INSERT INTO flight_templates 
+               (name, description, visible_fields, calculations, defaults, icon, color)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (
+                d['name'], d.get('description', ''),
+                json.dumps(d.get('visible_fields', [])),
+                json.dumps(d.get('calculations', {})),
+                json.dumps(d.get('defaults', {})),
+                d.get('icon'), d.get('color')
+            )
+        )
+        conn.commit()
+        return jsonify({'id': cur.lastrowid}), 201
+    finally:
+        conn.close()
+
+@app.route('/api/templates/<int:id>', methods=['PUT', 'DELETE'])
+def manage_template(id):
+    conn = get_db()
+    try:
+        if request.method == 'DELETE':
+            conn.execute('DELETE FROM flight_templates WHERE id = ?', (id,))
+            conn.commit()
+            return jsonify({'status': 'ok'})
+        else:
+            d = request.json
+            import json
+            conn.execute(
+                '''UPDATE flight_templates SET 
+                   name = ?, description = ?, visible_fields = ?, 
+                   calculations = ?, defaults = ?, icon = ?, color = ?
+                   WHERE id = ?''',
+                (
+                    d['name'], d.get('description', ''),
+                    json.dumps(d.get('visible_fields', [])),
+                    json.dumps(d.get('calculations', {})),
+                    json.dumps(d.get('defaults', {})),
+                    d.get('icon'), d.get('color'), id
+                )
+            )
+            conn.commit()
+            return jsonify({'status': 'ok'})
     finally:
         conn.close()
 

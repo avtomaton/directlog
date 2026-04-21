@@ -1,0 +1,127 @@
+import { AppSettings } from '../types';
+
+/**
+ * Calculate approximate sunset and sunrise times for a given date and latitude
+ * Uses simplified calculation - accurate enough for logbook purposes
+ */
+export const calculateSunTimes = (date: string, lat: number = 53.5, lon: number = -113.5): { sunrise: Date; sunset: Date } => {
+  const d = new Date(date);
+  const dayOfYear = Math.floor((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000) + 1;
+  
+  // Approximate solar calculations
+  const latRad = lat * Math.PI / 180;
+  
+  // Equation of time (simplified)
+  const b = (2 * Math.PI * (dayOfYear - 81)) / 365;
+  const equationOfTime = 9.87 * Math.sin(2 * b) - 7.53 * Math.cos(b) - 1.5 * Math.sin(b);
+  
+  // Solar declination
+  const declination = 23.45 * Math.sin((2 * Math.PI * (dayOfYear + 284)) / 365) * Math.PI / 180;
+  
+  // Hour angle for sunrise/sunset (civil twilight - 6 degrees below horizon)
+  const hourAngle = Math.acos(
+    Math.sin(-6 * Math.PI / 180) / (Math.cos(latRad) * Math.cos(declination)) - 
+    Math.tan(latRad) * Math.tan(declination)
+  ) * 180 / Math.PI;
+  
+  const sunriseHour = 12 - (hourAngle / 15) - (lon / 15) - (equationOfTime / 60);
+  const sunsetHour = 12 + (hourAngle / 15) - (lon / 15) - (equationOfTime / 60);
+  
+  const sunrise = new Date(date);
+  sunrise.setHours(Math.floor(sunriseHour), Math.floor((sunriseHour % 1) * 60), 0, 0);
+  
+  const sunset = new Date(date);
+  sunset.setHours(Math.floor(sunsetHour), Math.floor((sunsetHour % 1) * 60), 0, 0);
+  
+  return { sunrise, sunset };
+};
+
+/**
+ * Parse time offset string like "sunset+30" or "sunrise-60"
+ */
+export const parseTimeOffset = (spec: string, sunrise: Date, sunset: Date): Date => {
+  if (spec.startsWith('sunset')) {
+    const offset = parseInt(spec.replace('sunset', '')) || 0;
+    return new Date(sunset.getTime() + offset * 60000);
+  } else if (spec.startsWith('sunrise')) {
+    const offset = parseInt(spec.replace('sunrise', '')) || 0;
+    return new Date(sunrise.getTime() + offset * 60000);
+  }
+  return new Date();
+};
+
+/**
+ * Calculate night time between start and shutdown times based on settings
+ */
+export const calculateNightTime = (
+  date: string,
+  start: string,
+  shutdown: string,
+  settings: AppSettings
+): number => {
+  if (!start || !shutdown) return 0;
+  
+  const { sunrise, sunset } = calculateSunTimes(date);
+  const nightStart = parseTimeOffset(settings.nightStartTime, sunrise, sunset);
+  const nightEnd = parseTimeOffset(settings.nightEndTime, sunrise, sunset);
+  
+  // Convert flight times to Date objects
+  const [startH, startM] = start.split(':').map(Number);
+  const [endH, endM] = shutdown.split(':').map(Number);
+  
+  const flightStart = new Date(date);
+  flightStart.setHours(startH, startM, 0, 0);
+  
+  const flightEnd = new Date(date);
+  flightEnd.setHours(endH, endM, 0, 0);
+  
+  // Handle overnight flights
+  if (flightEnd < flightStart) {
+    flightEnd.setDate(flightEnd.getDate() + 1);
+  }
+  
+  // Calculate overlap between flight period and night period
+  const overlapStart = new Date(Math.max(flightStart.getTime(), nightStart.getTime()));
+  const overlapEnd = new Date(Math.min(flightEnd.getTime(), nightEnd.getTime()));
+  
+  if (overlapEnd <= overlapStart) return 0;
+  
+  const nightMinutes = (overlapEnd.getTime() - overlapStart.getTime()) / 60000;
+  return nightMinutes / 60;
+};
+
+/**
+ * Convert HH:MM string to decimal hours
+ */
+export const timeToHours = (time: string): number => {
+  if (!time) return 0;
+  const [h, m] = time.split(':').map(Number);
+  return h + m / 60;
+};
+
+/**
+ * Calculate duration between two times (handles overnight)
+ */
+export const calculateDuration = (start: string, end: string): number => {
+  const s = timeToHours(start);
+  const e = timeToHours(end);
+  if (e >= s) return e - s;
+  return (e + 24) - s;
+};
+
+/**
+ * Evaluate template calculation expression
+ */
+export const evaluateCalculation = (expr: string, values: Record<string, number>): number => {
+  try {
+    // Replace variables in expression
+    let processed = expr;
+    for (const [key, val] of Object.entries(values)) {
+      processed = processed.replace(new RegExp(`\\b${key}\\b`, 'g'), val.toString());
+    }
+    // Safe evaluation using Function constructor (only for numeric expressions)
+    return new Function(`return ${processed}`)();
+  } catch {
+    return 0;
+  }
+};

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Download, ChevronLeft, ChevronRight, Printer } from 'lucide-react';
+import { Search, Download, ChevronLeft, ChevronRight, Printer, Copy } from 'lucide-react';
 import { Flight } from '../types';
 import { AppSettings } from '../types';
 
@@ -11,7 +11,7 @@ function formatTime(hours: number, decimals: number, unit: 'hours' | 'minutes'):
   return hours.toFixed(decimals);
 }
 
-export default function Logbook({ flights, settings }: { flights: Flight[]; settings?: AppSettings }) {
+export default function Logbook({ flights, settings, onCopyFlight }: { flights: Flight[]; settings?: AppSettings; onCopyFlight?: (f: Flight) => void }) {
   const decimals = settings?.totalTimeDecimals ?? 1;
   const unit = settings?.totalTimeUnit ?? 'hours';
   const [q,    setQ]    = useState('');
@@ -136,7 +136,7 @@ export default function Logbook({ flights, settings }: { flights: Flight[]; sett
           <table className="w-full">
             <thead className="border-b border-white/10">
               <tr className="text-[10px] uppercase tracking-wider text-slate-500">
-                {['Date','Aircraft','Route','Air','PIC','Night','IMC','Sim','Ldg D','Ldg N','Appr','Remarks'].map(h => (
+                 {['Date','Aircraft','Route','Air','PIC','Night','IMC','Sim','Ldg D','Ldg N','Appr','Remarks',''].map(h => (
                   <th key={h} className={`px-3 py-3 font-medium ${['Air','PIC','Night','IMC','Sim','Ldg D','Ldg N'].includes(h) ? 'text-right' : 'text-left'}`}>{h}</th>
                 ))}
               </tr>
@@ -166,12 +166,23 @@ export default function Logbook({ flights, settings }: { flights: Flight[]; sett
                       ? <span className="inline-flex w-5 h-5 items-center justify-center rounded-full bg-primary/20 text-primary text-[10px]">{f.approaches.length}</span>
                       : '—'}
                   </td>
-                  <td className="px-3 py-3 text-xs text-slate-400 max-w-[130px] truncate">{f.remarks}</td>
-                </tr>
+                   <td className="px-3 py-3 text-xs text-slate-400 max-w-[130px] truncate">{f.remarks}</td>
+                   <td className="px-3 py-3 text-center">
+                     {onCopyFlight && (
+                       <button 
+                         onClick={() => onCopyFlight(f)}
+                         className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                         title="Copy this flight"
+                       >
+                         <Copy className="w-3.5 h-3.5" />
+                       </button>
+                     )}
+                   </td>
+                 </tr>
               ))}
               {displayRows.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
+                   <td colSpan={13} className="px-3 py-10 text-center text-slate-500">
                     No flights match your filters.
                   </td>
                 </tr>

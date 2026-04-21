@@ -19,6 +19,8 @@ const defaultSettings: AppSettings = {
   nightLandingEnd: 'sunrise-60',
   totalTimeDecimals: 1,
   totalTimeUnit: 'hours',
+  defaultTemplateId: null,
+  ifrDeductionMinutes: 12,
 };
 
 export default function App() {
@@ -29,23 +31,29 @@ export default function App() {
   const [events,         setEvents]         = useState<CurrencyEvent[]>([]);
   const [showImporter,   setShowImporter]   = useState(false);
   const [showAddFlight,  setShowAddFlight]  = useState(false);
+  const [editingFlight,  setEditingFlight]  = useState<any>(null);
   const [settings,       setSettings]       = useState<AppSettings>(defaultSettings);
 
+  const [templates, setTemplates] = useState<any[]>([]);
+  
   const loadData = useCallback(async () => {
     try {
-      const [f, a, e] = await Promise.all([
+      const [f, a, e, t] = await Promise.all([
         fetch('/api/flights').then(r => r.json()),
         fetch('/api/aircraft').then(r => r.json()),
         fetch('/api/events').then(r => r.json()).catch(() => []),
+        fetch('/api/templates').then(r => r.json()).catch(() => []),
       ]);
       setFlights(f);
       setAircraft(a);
       setEvents(e);
+      setTemplates(t);
     } catch {
       console.log('API unavailable — using sample data');
       setFlights(sampleFlights);
       setAircraft(sampleAircraft);
       setEvents(sampleEvents);
+      setTemplates([]);
     }
   }, []);
 
@@ -201,15 +209,49 @@ export default function App() {
               settings={settings}
             />
           )}
-          {tab === 'logbook'  && <Logbook  flights={flights} settings={settings} />}
+           {tab === 'logbook'  && <Logbook  flights={flights} settings={settings} onCopyFlight={(f) => { setEditingFlight(f); setShowAddFlight(true); }} />}
           {tab === 'reports'  && <Reports  flights={flights} />}
           {tab === 'aircraft' && <Aircraft aircraft={aircraft} />}
-          {tab === 'settings' && <SettingsPage settings={settings} onSave={setSettings} />}
+           {tab === 'settings' && (
+             <SettingsPage 
+               settings={settings} 
+               templates={templates}
+               onSave={setSettings}
+               onSaveTemplate={async (t) => {
+                 try {
+                   if (t.id) {
+                     await fetch(`/api/templates/${t.id}`, {
+                       method: 'PUT',
+                       headers: { 'Content-Type': 'application/json' },
+                       body: JSON.stringify(t)
+                     });
+                   } else {
+                     await fetch('/api/templates', {
+                       method: 'POST',
+                       headers: { 'Content-Type': 'application/json' },
+                       body: JSON.stringify(t)
+                     });
+                   }
+                   loadData();
+                 } catch (e) {
+                   console.warn('Template save failed', e);
+                 }
+               }}
+               onDeleteTemplate={async (id) => {
+                 try {
+                   await fetch(`/api/templates/${id}`, { method: 'DELETE' });
+                   loadData();
+                 } catch (e) {
+                   console.warn('Template delete failed', e);
+                 }
+               }}
+             />
+           )}
         </div>
       </main>
 
       {/* Modals */}
-      {showAddFlight  && <AddFlight aircraft={aircraft} onSave={loadData} onClose={() => setShowAddFlight(false)} />}
+      {showAddFlight  && <AddFlight aircraft={aircraft} settings={settings} templates={templates} initialFlight={editingFlight} onSave={() => { loadData(); setEditingFlight(null); }} onClose={() => { setShowAddFlight(false); setEditingFlight(null); }} />}
       {showImporter   && <CSVImporter onClose={() => setShowImporter(false)} onImport={loadData} />}
     </div>
   );
