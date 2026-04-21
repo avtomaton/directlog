@@ -84,8 +84,8 @@ def add_flight():
                 air_time, pic, sic, dual, night, ifr, actual_imc, simulated,
                 xc, xc_over_50nm, right_seat, multi_pilot, pilot_flying,
                 holds, ems, search_and_rescue, aerial_work, training, checkride,
-                flight_review, ipc, ldg_day, ldg_night, remarks)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                flight_review, ipc, ppc, route, pic_name, sic_name, ldg_day, ldg_night, remarks)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (
                 d['date'], d['aircraft'], d.get('type'),
                 d.get('from'), d.get('to'),
@@ -101,11 +101,12 @@ def add_flight():
                 d.get('ems', False),
                 d.get('search_and_rescue', False), d.get('aerial_work', False),
                 d.get('training', False), d.get('checkride', False),
-                d.get('flight_review', False), d.get('ipc', False),
+                d.get('flight_review', False), d.get('ipc', False), d.get('ppc', False),
+                d.get('route'), d.get('pic_name'), d.get('sic_name'),
                 d.get('ldg_day', 0),
                 d.get('ldg_night', 0), d.get('remarks', '')
             )
-        )
+            )
         fid = cur.lastrowid
         for a in d.get('approaches', []):
             conn.execute(
@@ -258,6 +259,7 @@ def currency():
     #   (3)   After grace: need 6 approaches + 6 hrs instrument (actual+sim) in last 6 months
     #         AND the IPC must still be within 24 months
     #   No IPC within 24 months → not IFR current regardless of recency flights
+    # IPC and PPC both count for IFR currency
     ipc_events = [
         e for e in events_rows
         if e['type'] in ('ipc', 'ppc')

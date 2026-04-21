@@ -61,12 +61,12 @@ const EMPTY_FORM = {
   
   // Flags
   ems:        false,
-  search_and_rescue: false,
-  aerial_work: false,
-  training: false,
-  checkride: false,
-  flight_review: false,
-  ipc: false,
+  ppc:        false,
+  
+  // Text fields
+  route:      '',
+  pic_name:   '',
+  sic_name:   '',
   
   ldg_day:    '1',
   ldg_night:  '0',
@@ -246,6 +246,10 @@ export default function AddFlight(props: Props) {
         checkride: (f as any).checkride || false,
         flight_review: (f as any).flight_review || false,
         ipc: (f as any).ipc || false,
+        ppc: (f as any).ppc || false,
+        route: (f as any).route || null,
+        pic_name: (f as any).pic_name || null,
+        sic_name: (f as any).sic_name || null,
         ldg_day:    parseInt(f.ldg_day,   10),
         ldg_night:  parseInt(f.ldg_night, 10),
         approaches,
@@ -283,7 +287,7 @@ export default function AddFlight(props: Props) {
     } focus:border-primary focus:outline-none text-sm
      [&>option]:bg-gray-900 [&>option]:text-white`;
 
-  const allAvailableFields: {id: string; label: string; type: 'time' | 'number' | 'boolean'}[] = [
+  const allAvailableFields: {id: string; label: string; type: 'time' | 'number' | 'boolean' | 'text'}[] = [
     { id: 'pic', label: 'PIC', type: 'time' },
     { id: 'sic', label: 'SIC', type: 'time' },
     { id: 'dual', label: 'Dual', type: 'time' },
@@ -310,6 +314,7 @@ export default function AddFlight(props: Props) {
     { id: 'combat', label: 'Combat', type: 'time' },
     { id: 'sling_load', label: 'Sling Load', type: 'time' },
     { id: 'hoist', label: 'Hoist', type: 'time' },
+    { id: 'ppc', label: 'PPC', type: 'boolean' },
   ];
 
   const numericFields: [string, string][] = allAvailableFields.map(f => [f.id, f.label]);
@@ -388,6 +393,40 @@ export default function AddFlight(props: Props) {
                 className={`${inputClass('to')} font-mono uppercase`}
               />
               {errors.to && <p className="text-[10px] text-red-400 mt-1">{errors.to}</p>}
+            </div>
+           </div>
+
+          {/* Route */}
+          <div>
+            <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">Route</label>
+            <input
+              value={(f as any).route || ''}
+              onChange={e => setField('route', e.target.value)}
+              placeholder="Direct"
+              className={inputClass()}
+            />
+            <p className="text-[10px] text-slate-500 mt-1">Leave empty for direct flight</p>
+          </div>
+
+          {/* Crew fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">PIC Name</label>
+              <input
+                value={(f as any).pic_name || ''}
+                onChange={e => setField('pic_name', e.target.value)}
+                placeholder="Pilot in Command"
+                className={inputClass()}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">SIC / Student</label>
+              <input
+                value={(f as any).sic_name || ''}
+                onChange={e => setField('sic_name', e.target.value)}
+                placeholder="Second in Command / Student"
+                className={inputClass()}
+              />
             </div>
           </div>
 
@@ -626,6 +665,15 @@ export default function AddFlight(props: Props) {
                 className="rounded"
               />
               IPC
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={(f as any).ppc || false}
+                onChange={e => setField('ppc', e.target.checked)}
+                className="rounded"
+              />
+              PPC
             </label>
           </div>
 

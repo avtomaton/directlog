@@ -181,7 +181,12 @@ export default function SettingsPage({ settings, templates, onSave, onSaveTempla
             </div>
           </div>
 
-          <div className="mt-4">
+         </section>
+
+        {/* IFR Time Calculation */}
+        <section className="glass rounded-2xl p-6">
+          <h2 className="text-lg font-semibold mb-4">IFR Time Calculation</h2>
+          <div className="mb-4">
             <label className="text-sm text-slate-400 mb-1 block">IFR Time Deduction</label>
             <div className="flex gap-2 items-center">
               <input
@@ -387,11 +392,31 @@ export default function SettingsPage({ settings, templates, onSave, onSaveTempla
                   </div>
                   <div>
                     <label className="block text-xs text-slate-400 mb-1.5 uppercase">Icon</label>
+                    <div className="grid grid-cols-8 gap-1 mb-2">
+                      {['✈️', '🚁', '🚑', '🚒', '🚓', '🛸', '🌲', '🏔️', 
+                       '🌊', '🔥', '⚡', '🎯', '📦', '🚜', '🏭', '💨',
+                       '✈️', '🛩️', '🛫', '🛬', '🔍', '🆘', '🏥', '🎓',
+                       '📋', '✅', '⚠️', '🛡️', '🚀', '⚙️', '🔧', '💼'
+                      ].map(icon => (
+                        <button
+                          key={icon}
+                          onClick={() => setEditingTemplate({ ...editingTemplate, icon })}
+                          className={`p-1 rounded text-lg ${
+                            editingTemplate.icon === icon 
+                              ? 'bg-primary/30 ring-1 ring-primary' 
+                              : 'hover:bg-white/10'
+                          }`}
+                        >
+                          {icon}
+                        </button>
+                      ))}
+                    </div>
                     <input
                       value={editingTemplate.icon}
                       onChange={e => setEditingTemplate({ ...editingTemplate, icon: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm"
+                      className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-sm"
                       maxLength={2}
+                      placeholder="Or enter custom"
                     />
                   </div>
                 </div>
@@ -417,7 +442,7 @@ export default function SettingsPage({ settings, templates, onSave, onSaveTempla
                       ['xc_over_50nm', 'XC >50nm'], ['right_seat', 'Right Seat'], 
                       ['multi_pilot', 'Multi Pilot'], ['pilot_flying', 'Pilot Flying'],
                       ['holds', 'Holds'], 
-                      ['ems', 'EMS/Medevac'], 
+                      ['ems', 'EMS/Medevac'], ['ppc', 'PPC'],
                       ['training', 'Training'], ['checkride', 'Checkride'],
                       ['flight_review', 'Flight Review'], ['ipc', 'IPC'],
                       ['aerial_work', 'Aerial Work'], ['search_and_rescue', 'SAR'],
@@ -425,7 +450,8 @@ export default function SettingsPage({ settings, templates, onSave, onSaveTempla
                       ['glider_towing', 'Glider Towing'], ['formation', 'Formation'],
                       ['low_level', 'Low Level'], ['mountain', 'Mountain Flying'],
                       ['offshore', 'Offshore'], ['bush', 'Bush'], ['combat', 'Combat'],
-                      ['sling_load', 'Sling Load'], ['hoist', 'Hoist']
+                      ['sling_load', 'Sling Load'], ['hoist', 'Hoist'],
+                      ['pic_name', 'PIC Name'], ['sic_name', 'SIC/Student Name'], ['route', 'Route']
                     ].map(([key, label]) => (
                       <label key={key} className="flex items-center gap-2 text-sm">
                         <input
@@ -493,7 +519,7 @@ export default function SettingsPage({ settings, templates, onSave, onSaveTempla
                     {[
                       ['ems', 'EMS'], 
                       ['training', 'Training'], ['checkride', 'Checkride'],
-                      ['flight_review', 'Flight Review'], ['ipc', 'IPC'],
+                      ['flight_review', 'Flight Review'], ['ipc', 'IPC'], ['ppc', 'PPC'],
                       ['aerial_work', 'Aerial Work'], ['search_and_rescue', 'SAR']
                     ].map(([key, label]) => (
                       <label key={key} className="flex items-center gap-2 text-sm">

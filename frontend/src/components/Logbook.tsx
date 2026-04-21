@@ -169,13 +169,25 @@ export default function Logbook({ flights, settings, onCopyFlight }: { flights: 
                    <td className="px-3 py-3 text-xs text-slate-400 max-w-[130px] truncate">{f.remarks}</td>
                    <td className="px-3 py-3 text-center">
                      {onCopyFlight && (
-                       <button 
-                         onClick={() => onCopyFlight(f)}
-                         className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
-                         title="Copy this flight"
-                       >
-                         <Copy className="w-3.5 h-3.5" />
-                       </button>
+                       <div className="flex gap-1">
+                         <button 
+                           onClick={() => onCopyFlight(f)}
+                           className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                           title="Copy this flight"
+                         >
+                           <Copy className="w-3.5 h-3.5" />
+                         </button>
+                         <button 
+                           onClick={() => {
+                             const reversed = {...f, from: f.to, to: f.from, route: ''};
+                             onCopyFlight(reversed);
+                           }}
+                           className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                           title="Copy reversed flight"
+                         >
+                           ↔️
+                         </button>
+                       </div>
                      )}
                    </td>
                  </tr>

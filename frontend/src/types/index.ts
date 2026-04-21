@@ -66,17 +66,15 @@ export interface Flight {
   
   // Special operations
   holds?: number;
-  ifr?: boolean;
-  vfr?: boolean;
-  night_operation?: boolean;
+  ifr?: number;
   ems?: boolean;
-  medevac?: boolean;
   search_and_rescue?: boolean;
   aerial_work?: boolean;
   training?: boolean;
   checkride?: boolean;
   flight_review?: boolean;
   ipc?: boolean;
+  ppc?: boolean;
   banner_towing?: number;
   glider_towing?: number;
   formation?: number;
@@ -91,10 +89,15 @@ export interface Flight {
   
   // Crew
   pilot_in_command_name?: string;
+  pic_name?: string;
+  sic_name?: string;
   copilot_name?: string;
   instructor_name?: string;
   students?: string;
   additional_crew?: string;
+  
+  // Route
+  route?: string;
   
   // Admin
   flight_number?: string;
