@@ -1,17 +1,23 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Download, ChevronLeft, ChevronRight, Printer, Copy } from 'lucide-react';
+import { Search, Download, ChevronLeft, ChevronRight, Printer, Copy, Pencil, Trash2 } from 'lucide-react';
 import { Flight } from '../types';
 import { AppSettings } from '../types';
 
 const PER_PAGE = 20;
 
 function formatTime(hours: number, decimals: number, unit: 'hours' | 'minutes'): string {
-  if (!hours || hours === 0) return '—';
-  if (unit === 'minutes') return Math.round(hours * 60).toString();
-  return hours.toFixed(decimals);
+    if (!hours || hours === 0) return '—';
+    if (unit === 'minutes') return Math.round(hours * 60).toString();
+    return hours.toFixed(decimals);
 }
 
-export default function Logbook({ flights, settings, onCopyFlight }: { flights: Flight[]; settings?: AppSettings; onCopyFlight?: (f: Flight) => void }) {
+export default function Logbook({ flights, settings, onCopyFlight, onEditFlight, onDeleteFlight }: {
+    flights: Flight[];
+    settings?: AppSettings;
+    onCopyFlight?: (f: Flight) => void;
+    onEditFlight?: (f: Flight) => void;
+    onDeleteFlight?: (id: number) => void;
+}) {
   const decimals = settings?.totalTimeDecimals ?? 1;
   const unit = settings?.totalTimeUnit ?? 'hours';
   const [q,    setQ]    = useState('');
@@ -168,27 +174,51 @@ export default function Logbook({ flights, settings, onCopyFlight }: { flights: 
                   </td>
                    <td className="px-3 py-3 text-xs text-slate-400 max-w-[130px] truncate">{f.remarks}</td>
                    <td className="px-3 py-3 text-center">
-                     {onCopyFlight && (
-                       <div className="flex gap-1">
-                         <button 
-                           onClick={() => onCopyFlight(f)}
-                           className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
-                           title="Copy this flight"
-                         >
-                           <Copy className="w-3.5 h-3.5" />
-                         </button>
-                         <button 
-                           onClick={() => {
-                             const reversed = {...f, from: f.to, to: f.from, route: ''};
-                             onCopyFlight(reversed);
-                           }}
-                           className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
-                           title="Copy reversed flight"
-                         >
-                           ↔️
-                         </button>
+                       <div className="flex gap-1 items-center justify-center">
+                           {onEditFlight && (
+                               <button
+                                   onClick={() => onEditFlight(f)}
+                                   className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-primary transition-colors"
+                                   title="Edit flight"
+                               >
+                                   <Pencil className="w-3.5 h-3.5" />
+                               </button>
+                           )}
+                           {onDeleteFlight && (
+                               <button
+                                   onClick={() => {
+                                       if (confirm(`Delete flight ${f.date} ${f.from}→${f.to}?`)) {
+                                           onDeleteFlight(f.id);
+                                       }
+                                   }}
+                                   className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-red-400 transition-colors"
+                                   title="Delete flight"
+                               >
+                                   <Trash2 className="w-3.5 h-3.5" />
+                               </button>
+                           )}
+                           {onCopyFlight && (
+                               <>
+                                   <button
+                                       onClick={() => onCopyFlight(f)}
+                                       className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                                       title="Copy this flight"
+                                   >
+                                       <Copy className="w-3.5 h-3.5" />
+                                   </button>
+                                   <button
+                                       onClick={() => {
+                                           const reversed = {...f, from: f.to, to: f.from, route: ''};
+                                           onCopyFlight(reversed);
+                                       }}
+                                       className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                                       title="Copy reversed flight"
+                                   >
+                                       ↔️
+                                   </button>
+                               </>
+                           )}
                        </div>
-                     )}
                    </td>
                  </tr>
               ))}

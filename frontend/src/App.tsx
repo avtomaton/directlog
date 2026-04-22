@@ -209,9 +209,60 @@ export default function App() {
               settings={settings}
             />
           )}
-           {tab === 'logbook'  && <Logbook  flights={flights} settings={settings} onCopyFlight={(f) => { setEditingFlight(f); setShowAddFlight(true); }} />}
-          {tab === 'reports'  && <Reports  flights={flights} />}
-          {tab === 'aircraft' && <Aircraft aircraft={aircraft} />}
+           {tab === 'logbook' && (
+               <Logbook
+                   flights={flights}
+                   settings={settings}
+                   onCopyFlight={(f) => { setEditingFlight(f); setShowAddFlight(true); }}
+                   onEditFlight={(f) => { setEditingFlight(f); setShowAddFlight(true); }}
+                   onDeleteFlight={async (id) => {
+                       try {
+                           await fetch(`/api/flights/${id}`, { method: 'DELETE' });
+                           loadData();
+                       } catch (e) {
+                           console.warn('Delete flight failed', e);
+                       }
+                   }}
+               />
+           )}
+           {tab === 'reports' && <Reports flights={flights} />}
+           {tab === 'aircraft' && (
+               <Aircraft
+                   aircraft={aircraft}
+                   onEdit={(ac) => {
+                       const reg = ac.reg || prompt('Enter aircraft registration (e.g., C-GABC):');
+                       if (!reg) return;
+                       const updated = { ...ac, reg };
+                       fetch('/api/aircraft', {
+                           method: ac.reg ? 'PUT' : 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify(updated),
+                       }).then(() => loadData()).catch(e => console.warn('Aircraft save failed', e));
+                   }}
+                   onDelete={async (reg) => {
+                       try {
+                           await fetch(`/api/aircraft/${reg}`, { method: 'DELETE' });
+                           loadData();
+                       } catch (e) {
+                           console.warn('Delete aircraft failed', e);
+                       }
+                   }}
+                   onToggleHidden={async (reg, hidden) => {
+                       const ac = aircraft.find(a => a.reg === reg);
+                       if (!ac) return;
+                       try {
+                           await fetch(`/api/aircraft/${reg}`, {
+                               method: 'PUT',
+                               headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify({ ...ac, hidden }),
+                           });
+                           loadData();
+                       } catch (e) {
+                           console.warn('Toggle hidden failed', e);
+                       }
+                   }}
+               />
+           )}
            {tab === 'settings' && (
              <SettingsPage 
                settings={settings} 
@@ -251,7 +302,7 @@ export default function App() {
       </main>
 
       {/* Modals */}
-      {showAddFlight  && <AddFlight aircraft={aircraft} settings={settings} templates={templates} initialFlight={editingFlight} onSave={() => { loadData(); setEditingFlight(null); }} onClose={() => { setShowAddFlight(false); setEditingFlight(null); }} />}
+      {showAddFlight && <AddFlight aircraft={aircraft.filter(a => !a.hidden)} settings={settings} templates={templates} initialFlight={editingFlight} onSave={() => { loadData(); setEditingFlight(null); }} onClose={() => { setShowAddFlight(false); setEditingFlight(null); }} />}
       {showImporter   && <CSVImporter onClose={() => setShowImporter(false)} onImport={loadData} />}
     </div>
   );

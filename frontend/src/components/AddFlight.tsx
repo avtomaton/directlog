@@ -295,8 +295,11 @@ export default function AddFlight(props: Props) {
               landing_time: f.landing_time || null,
               shutdown_time: f.shutdown_time || null,
           };
-      const res = await fetch('/api/flights', {
-        method: 'POST',
+      const isEditing = !!props.initialFlight?.id;
+      const url = isEditing ? `/api/flights/${props.initialFlight!.id}` : '/api/flights';
+      const method = isEditing ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });

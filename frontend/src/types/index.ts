@@ -140,18 +140,19 @@ export interface Approach {
 }
 
 export interface Aircraft {
-  reg: string;
-  type: string;
-  class: 'SEL' | 'MEL' | 'SES' | 'MES';
-  category: 'Aeroplane' | 'Helicopter';
-  hp?: number;
-  complex?: boolean;
-  tailwheel?: boolean;
-  equip?: string;
-  home?: string;
-  total_time?: number;
-  last_flown?: string;
-  notes?: string;
+    reg: string;
+    type: string;
+    class: 'SEL' | 'MEL' | 'SES' | 'MES';
+    category: 'Aeroplane' | 'Helicopter';
+    hp?: number;
+    complex?: boolean;
+    tailwheel?: boolean;
+    equip?: string;
+    home?: string;
+    total_time?: number;
+    last_flown?: string;
+    notes?: string;
+    hidden?: boolean;
 }
 
 export interface CurrencyStatus {

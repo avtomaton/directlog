@@ -47,6 +47,46 @@ def aircraft():
     finally:
         conn.close()
 
+@app.route('/api/aircraft/<reg>', methods=['PUT', 'DELETE'])
+def manage_aircraft(reg):
+    conn = get_db()
+    try:
+        if request.method == 'DELETE':
+            conn.execute('DELETE FROM aircraft WHERE reg = ?', (reg,))
+            conn.commit()
+            return jsonify({'status': 'ok'})
+        else:
+            d = request.json
+            conn.execute(
+                '''UPDATE aircraft SET type=?, class=?, category=?, hp=?, complex=?,
+                tailwheel=?, equip=?, home=?, total_time=?, last_flown=?, notes=?, hidden=?
+                WHERE reg=?''',
+                (d.get('type'), d.get('class'), d.get('category'), d.get('hp'),
+                 d.get('complex'), d.get('tailwheel'), d.get('equip'), d.get('home'),
+                 d.get('total_time'), d.get('last_flown'), d.get('notes'), d.get('hidden', False), reg)
+            )
+            conn.commit()
+            return jsonify({'status': 'ok'})
+    finally:
+        conn.close()
+
+@app.route('/api/aircraft', methods=['POST'])
+def add_aircraft():
+    conn = get_db()
+    try:
+        d = request.json
+        conn.execute(
+            '''INSERT INTO aircraft (reg, type, class, category, hp, complex, tailwheel, equip, home, total_time, last_flown, notes, hidden)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (d['reg'], d.get('type'), d.get('class'), d.get('category'), d.get('hp'),
+             d.get('complex'), d.get('tailwheel'), d.get('equip'), d.get('home'),
+             d.get('total_time'), d.get('last_flown'), d.get('notes'), d.get('hidden', False))
+        )
+        conn.commit()
+        return jsonify({'status': 'ok'}), 201
+    finally:
+        conn.close()
+
 @app.route('/api/events')
 def events():
     conn = get_db()
@@ -115,6 +155,51 @@ def add_flight():
             )
         conn.commit()
         return jsonify({'id': fid}), 201
+    finally:
+        conn.close()
+
+@app.route('/api/flights/<int:id>', methods=['PUT', 'DELETE'])
+def manage_flight(id):
+    conn = get_db()
+    try:
+        if request.method == 'DELETE':
+            conn.execute('DELETE FROM approaches WHERE flight_id = ?', (id,))
+            conn.execute('DELETE FROM flights WHERE id = ?', (id,))
+            conn.commit()
+            return jsonify({'status': 'ok'})
+        else:
+            d = request.json
+            conn.execute(
+                '''UPDATE flights SET
+                date=?, aircraft=?, type=?, from_ap=?, to_ap=?,
+                start_time=?, takeoff_time=?, landing_time=?, shutdown_time=?,
+                air_time=?, pic=?, sic=?, dual=?, night=?, ifr=?, actual_imc=?, simulated=?,
+                xc=?, xc_over_50nm=?, right_seat=?, multi_pilot=?, pilot_flying=?,
+                holds=?, ems=?, search_and_rescue=?, aerial_work=?, training=?, checkride=?,
+                flight_review=?, ipc=?, ppc=?, route=?, pic_name=?, sic_name=?,
+                ldg_day=?, ldg_night=?, remarks=?
+                WHERE id=?''',
+                (d['date'], d['aircraft'], d.get('type'), d.get('from'), d.get('to'),
+                 d.get('start_time'), d.get('takeoff_time'), d.get('landing_time'), d.get('shutdown_time'),
+                 d.get('air_time', 0), d.get('pic', 0), d.get('sic', 0), d.get('dual', 0),
+                 d.get('night', 0), d.get('ifr', 0), d.get('actual_imc', 0), d.get('simulated', 0),
+                 d.get('xc', 0), d.get('xc_over_50nm', 0), d.get('right_seat', 0),
+                 d.get('multi_pilot', 0), d.get('pilot_flying', 0),
+                 d.get('holds', 0), d.get('ems', False), d.get('search_and_rescue', False),
+                 d.get('aerial_work', False), d.get('training', False), d.get('checkride', False),
+                 d.get('flight_review', False), d.get('ipc', False), d.get('ppc', False),
+                 d.get('route'), d.get('pic_name'), d.get('sic_name'),
+                 d.get('ldg_day', 0), d.get('ldg_night', 0), d.get('remarks', ''), id)
+            )
+            # Update approaches: delete old ones and insert new
+            conn.execute('DELETE FROM approaches WHERE flight_id = ?', (id,))
+            for a in d.get('approaches', []):
+                conn.execute(
+                    'INSERT INTO approaches (flight_id, type, airport, runway, actual) VALUES (?,?,?,?,?)',
+                    (id, a['type'], a['airport'], a.get('runway'), 1 if a.get('actual') else 0)
+                )
+            conn.commit()
+            return jsonify({'status': 'ok'})
     finally:
         conn.close()
 
@@ -331,9 +416,52 @@ def currency():
 
 if __name__ == '__main__':
     os.makedirs('data', exist_ok=True)
-    # Ensure settings table exists
     conn = get_db()
     conn.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
+    # Ensure aircraft table has hidden column (may already exist without it)
+    try:
+        conn.execute('ALTER TABLE aircraft ADD COLUMN hidden INTEGER DEFAULT 0')
+    except:
+        pass
+    # Ensure flights table has all required columns (migration for existing databases)
+    for col, dtype in [
+        ('dual', 'REAL DEFAULT 0'),
+        ('sic', 'REAL DEFAULT 0'),
+        ('xc', 'REAL DEFAULT 0'),
+        ('xc_over_50nm', 'REAL DEFAULT 0'),
+        ('right_seat', 'REAL DEFAULT 0'),
+        ('multi_pilot', 'REAL DEFAULT 0'),
+        ('pilot_flying', 'REAL DEFAULT 0'),
+        ('holds', 'INTEGER DEFAULT 0'),
+        ('ifr', 'BOOLEAN DEFAULT 0'),
+        ('vfr', 'BOOLEAN DEFAULT 1'),
+        ('night_operation', 'BOOLEAN DEFAULT 0'),
+        ('ems', 'BOOLEAN DEFAULT 0'),
+        ('medevac', 'BOOLEAN DEFAULT 0'),
+        ('search_and_rescue', 'BOOLEAN DEFAULT 0'),
+        ('aerial_work', 'BOOLEAN DEFAULT 0'),
+        ('training', 'BOOLEAN DEFAULT 0'),
+        ('checkride', 'BOOLEAN DEFAULT 0'),
+        ('flight_review', 'BOOLEAN DEFAULT 0'),
+        ('ipc', 'BOOLEAN DEFAULT 0'),
+        ('ppc', 'BOOLEAN DEFAULT 0'),
+        ('multi_engine', 'REAL DEFAULT 0'),
+        ('complex', 'REAL DEFAULT 0'),
+        ('high_performance', 'REAL DEFAULT 0'),
+        ('turbine', 'REAL DEFAULT 0'),
+        ('jet', 'REAL DEFAULT 0'),
+        ('start_time', 'TEXT'),
+        ('shutdown_time', 'TEXT'),
+        ('takeoff_time', 'TEXT'),
+        ('landing_time', 'TEXT'),
+        ('route', 'TEXT'),
+        ('pic_name', 'TEXT'),
+        ('sic_name', 'TEXT'),
+    ]:
+        try:
+            conn.execute(f'ALTER TABLE flights ADD COLUMN {col} {dtype}')
+        except:
+            pass
     conn.commit()
     conn.close()
     app.run(debug=os.environ.get('FLASK_DEBUG', 'False').lower() == 'true', port=5001)
