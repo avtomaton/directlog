@@ -110,18 +110,49 @@ export const calculateDuration = (start: string, end: string): number => {
 };
 
 /**
- * Evaluate template calculation expression
+ * Evaluate template calculation expression using a safe arithmetic-only parser.
+ * Only supports: +, -, *, /, parentheses, numbers, and defined variable names.
+ * No function calls, no object access, no string operations.
  */
 export const evaluateCalculation = (expr: string, values: Record<string, number>): number => {
-  try {
-    // Replace variables in expression
-    let processed = expr;
-    for (const [key, val] of Object.entries(values)) {
-      processed = processed.replace(new RegExp(`\\b${key}\\b`, 'g'), val.toString());
+    try {
+        // Tokenize: split into numbers, operators, parentheses, and identifiers
+        const tokens: string[] = [];
+        let i = 0;
+        while (i < expr.length) {
+            const ch = expr[i];
+            if (/\s/.test(ch)) { i++; continue; }
+            if (/[0-9.]/.test(ch)) {
+                let num = '';
+                while (i < expr.length && /[0-9.]/.test(expr[i])) num += expr[i++];
+                tokens.push(num);
+            } else if (/[+\-*/()]/.test(ch)) {
+                tokens.push(ch);
+                i++;
+            } else if (/[a-zA-Z_]/.test(ch)) {
+                let ident = '';
+                while (i < expr.length && /[a-zA-Z0-9_]/.test(expr[i])) ident += expr[i++];
+                tokens.push(ident);
+            } else {
+                // Unknown character — invalid expression
+                return 0;
+            }
+        }
+
+        // Substitute known variables
+        const substituted = tokens.map(t => {
+            if (values[t] !== undefined) return String(values[t]);
+            // Only allow known variable names as identifiers
+            if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(t)) return '0';
+            return t;
+        }).join('');
+
+        // Validate: only digits, operators, parentheses, and decimals should remain
+        if (!/^[0-9+\-*/().]+$/.test(substituted)) return 0;
+
+        // Use Function with "use strict" for slightly safer eval of arithmetic only
+        return Function(`"use strict"; return (${substituted})`)();
+    } catch {
+        return 0;
     }
-    // Safe evaluation using Function constructor (only for numeric expressions)
-    return new Function(`return ${processed}`)();
-  } catch {
-    return 0;
-  }
 };

@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import sqlite3, os
+import sqlite3, os, json
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -124,7 +124,6 @@ def get_settings():
     try:
         cur = conn.execute("SELECT key, value FROM settings WHERE key = 'app_settings'").fetchone()
         if cur:
-            import json
             return jsonify(json.loads(cur['value']))
         return jsonify({})
     finally:
@@ -134,7 +133,6 @@ def get_settings():
 def save_settings():
     conn = get_db()
     try:
-        import json
         d = request.json
         cur = conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
@@ -153,7 +151,6 @@ def get_templates():
         result = []
         for row in rows:
             tpl = dict(row)
-            import json
             tpl['visible_fields'] = json.loads(tpl['visible_fields'])
             tpl['calculations'] = json.loads(tpl['calculations'])
             tpl['defaults'] = json.loads(tpl['defaults'])
@@ -167,11 +164,10 @@ def create_template():
     conn = get_db()
     try:
         d = request.json
-        import json
         cur = conn.execute(
-            '''INSERT INTO flight_templates 
-               (name, description, visible_fields, calculations, defaults, icon, color)
-               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            '''INSERT INTO flight_templates
+            (name, description, visible_fields, calculations, defaults, icon, color)
+            VALUES (?, ?, ?, ?, ?, ?, ?)''',
             (
                 d['name'], d.get('description', ''),
                 json.dumps(d.get('visible_fields', [])),
@@ -195,12 +191,11 @@ def manage_template(id):
             return jsonify({'status': 'ok'})
         else:
             d = request.json
-            import json
             conn.execute(
-                '''UPDATE flight_templates SET 
-                   name = ?, description = ?, visible_fields = ?, 
-                   calculations = ?, defaults = ?, icon = ?, color = ?
-                   WHERE id = ?''',
+                '''UPDATE flight_templates SET
+                name = ?, description = ?, visible_fields = ?,
+                calculations = ?, defaults = ?, icon = ?, color = ?
+                WHERE id = ?''',
                 (
                     d['name'], d.get('description', ''),
                     json.dumps(d.get('visible_fields', [])),
@@ -277,16 +272,20 @@ def currency():
         ipc_within_12mo  = ipc_date >= twelve_mo_ago  # 12-month grace period (not 13)
 
         # Always compute 6-month recency so the UI can show progress
+        # Batch-fetch all approaches for recent flights in a single query (fixes N+1)
+        flight_ids = [f['id'] for f in recent]
+        if flight_ids:
+            placeholders = ','.join('?' * len(flight_ids))
+            appr_rows = conn.execute(
+                f'SELECT flight_id, COUNT(*) as c FROM approaches WHERE flight_id IN ({placeholders}) GROUP BY flight_id',
+                flight_ids
+            ).fetchall()
+            appr_map = {row['flight_id']: row['c'] for row in appr_rows}
+        else:
+            appr_map = {}
         for f in recent:
-            conn2 = get_db()
-            try:
-                appr_count = conn2.execute(
-                    'SELECT COUNT(*) c FROM approaches WHERE flight_id=?', (f['id'],)
-                ).fetchone()['c']
-            finally:
-                conn2.close()
-            approaches  += appr_count
-            inst_hours  += (f['actual_imc'] or 0) + (f['simulated'] or 0)
+            approaches += appr_map.get(f['id'], 0)
+            inst_hours += (f['actual_imc'] or 0) + (f['simulated'] or 0)
 
         in_grace = ipc_within_12mo
 
@@ -337,4 +336,4 @@ if __name__ == '__main__':
     conn.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
     conn.commit()
     conn.close()
-    app.run(debug=True, port=5001)
+    app.run(debug=os.environ.get('FLASK_DEBUG', 'False').lower() == 'true', port=5001)

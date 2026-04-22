@@ -1,91 +1,126 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, X, AlertCircle, CheckCircle2, LogOut, LogIn, PlaneTakeoff, PlaneLanding } from 'lucide-react';
-import { Aircraft, FlightTemplate } from '../types';
+import { Aircraft, FlightTemplate, AppSettings, Flight } from '../types';
 import { calculateDuration, calculateNightTime, evaluateCalculation, timeToHours } from '../utils/flightUtils';
 
 interface Props {
-  aircraft: Aircraft[];
-  settings: any;
-  templates?: FlightTemplate[];
-  initialFlight?: any;
-  onSave: () => void;
-  onClose: () => void;
+    aircraft: Aircraft[];
+    settings: AppSettings;
+    templates?: FlightTemplate[];
+    initialFlight?: Partial<Flight> | null;
+    onSave: () => void;
+    onClose: () => void;
 }
 
 type Toast = { kind: 'success' | 'error'; msg: string };
 
-const EMPTY_FORM = {
-  date: new Date().toISOString().slice(0, 10),
-  aircraft:   '',
-  from:       '',
-  to:         '',
-  
-  // Block times
-  start_time:     '',
-  takeoff_time:   '',
-  landing_time:   '',
-  shutdown_time:  '',
-  
-  // Time fields
-  air_time:   '',
-  pic:        '',
-  dual:       '0',
-  night:      '0',
-  actual_imc: '0',
-  simulated:  '0',
-  ifr:        '0',
-  
-  // Role time
-  sic:        '0',
-  pilot_flying: '0',
-  right_seat: '0',
-  multi_pilot: '0',
-  
-  // Cross country
-  xc:         '0',
-  xc_over_50nm: '0',
-  
-  // Other time fields
-  holds: '0',
-  aerobatic_time: '0',
-  banner_towing: '0',
-  glider_towing: '0',
-  formation: '0',
-  low_level: '0',
-  mountain: '0',
-  offshore: '0',
-  bush: '0',
-  combat: '0',
-  sling_load: '0',
-  hoist: '0',
-  
-  // Flags
-  ems:        false,
-  ppc:        false,
-  
-  // Text fields
-  route:      '',
-  pic_name:   '',
-  sic_name:   '',
-  
-  ldg_day:    '1',
-  ldg_night:  '0',
-  remarks:    '',
+/** Form state type — all time fields are strings for input binding */
+type FlightForm = {
+    date: string;
+    aircraft: string;
+    from: string;
+    to: string;
+    start_time: string;
+    takeoff_time: string;
+    landing_time: string;
+    shutdown_time: string;
+    air_time: string;
+    pic: string;
+    dual: string;
+    night: string;
+    actual_imc: string;
+    simulated: string;
+    ifr: string;
+    sic: string;
+    pilot_flying: string;
+    right_seat: string;
+    multi_pilot: string;
+    xc: string;
+    xc_over_50nm: string;
+    holds: string;
+    aerobatic_time: string;
+    banner_towing: string;
+    glider_towing: string;
+    formation: string;
+    low_level: string;
+    mountain: string;
+    offshore: string;
+    bush: string;
+    combat: string;
+    sling_load: string;
+    hoist: string;
+    ems: boolean;
+    ppc: boolean;
+    route: string;
+    pic_name: string;
+    sic_name: string;
+    ldg_day: string;
+    ldg_night: string;
+    remarks: string;
+};
+
+const EMPTY_FORM: FlightForm = {
+    date: new Date().toISOString().slice(0, 10),
+    aircraft: '',
+    from: '',
+    to: '',
+    start_time: '',
+    takeoff_time: '',
+    landing_time: '',
+    shutdown_time: '',
+    air_time: '',
+    pic: '',
+    dual: '0',
+    night: '0',
+    actual_imc: '0',
+    simulated: '0',
+    ifr: '0',
+    sic: '0',
+    pilot_flying: '0',
+    right_seat: '0',
+    multi_pilot: '0',
+    xc: '0',
+    xc_over_50nm: '0',
+    holds: '0',
+    aerobatic_time: '0',
+    banner_towing: '0',
+    glider_towing: '0',
+    formation: '0',
+    low_level: '0',
+    mountain: '0',
+    offshore: '0',
+    bush: '0',
+    combat: '0',
+    sling_load: '0',
+    hoist: '0',
+    ems: false,
+    ppc: false,
+    route: '',
+    pic_name: '',
+    sic_name: '',
+    ldg_day: '1',
+    ldg_night: '0',
+    remarks: '',
 };
 
 export default function AddFlight(props: Props) {
-  const [f, setF]           = useState(() => {
-    if (props.initialFlight) {
-      const copy = { ...EMPTY_FORM };
-      Object.keys(props.initialFlight).forEach(key => {
-        if (key in copy && key !== 'start_time' && key !== 'shutdown_time' && key !== 'takeoff_time' && key !== 'landing_time' && key !== 'id' && key !== 'created_at') {
-          (copy as any)[key] = props.initialFlight[key];
+    const [f, setF] = useState<FlightForm>(() => {
+        if (props.initialFlight) {
+            const copy: FlightForm = { ...EMPTY_FORM };
+            const skip = new Set(['start_time', 'shutdown_time', 'takeoff_time', 'landing_time', 'id', 'created_at']);
+            const init = props.initialFlight;
+            (Object.keys(init) as (keyof Flight)[]).forEach(key => {
+                if (!(key in copy) || skip.has(key)) return;
+                const val = init[key];
+                if (val === undefined) return;
+                if (typeof val === 'number') (copy as Record<string, unknown>)[key] = String(val);
+                else if (typeof val === 'boolean') (copy as Record<string, unknown>)[key] = val;
+                else (copy as Record<string, unknown>)[key] = val;
+            });
+            return copy;
         }
-      });
-      return copy;
-    }
-    return { ...EMPTY_FORM, aircraft: props.aircraft[0]?.reg ?? '' };
-  });
+        return { ...EMPTY_FORM, aircraft: props.aircraft[0]?.reg ?? '' };
+    });
   const [approaches, setAp] = useState<{ type: string; airport: string; runway: string }[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -168,8 +203,8 @@ export default function AddFlight(props: Props) {
 
     // Apply template calculations
     if (currentTemplate?.calculations) {
-      const takeoff = (f as any).takeoff_time;
-      const landing = (f as any).landing_time;
+        const takeoff = f.takeoff_time;
+        const landing = f.landing_time;
       
       let ifrTime: number;
       if (takeoff && landing) {
@@ -217,47 +252,49 @@ export default function AddFlight(props: Props) {
   };
 
   const save = async () => {
-    if (!validate()) return;
-    setLoading(true);
-    try {
-      // Fix: use the full type name from the aircraft record
-      const acType = props.aircraft.find(a => a.reg === f.aircraft)?.type ?? '';
-      const payload = {
-        ...f,
-        type:       acType,
-        air_time:   parseFloat(f.air_time),
-        pic:        parseFloat(f.pic  || f.air_time),
-        dual:       parseFloat(f.dual),
-        sic:        parseFloat(f.sic),
-        night:      parseFloat(f.night),
-        ifr:        parseFloat((f as any).ifr || 0),
-        actual_imc: parseFloat(f.actual_imc),
-        simulated:  parseFloat(f.simulated),
-        xc:         parseFloat(f.xc),
-        xc_over_50nm: parseFloat(f.xc_over_50nm),
-        right_seat: parseFloat(f.right_seat),
-        multi_pilot: parseFloat(f.multi_pilot),
-        pilot_flying: parseFloat(f.pilot_flying || '0'),
-        holds: parseInt((f as any).holds || 0, 10),
-        ems: (f as any).ems || false,
-        search_and_rescue: (f as any).search_and_rescue || false,
-        aerial_work: (f as any).aerial_work || false,
-        training: (f as any).training || false,
-        checkride: (f as any).checkride || false,
-        flight_review: (f as any).flight_review || false,
-        ipc: (f as any).ipc || false,
-        ppc: (f as any).ppc || false,
-        route: (f as any).route || null,
-        pic_name: (f as any).pic_name || null,
-        sic_name: (f as any).sic_name || null,
-        ldg_day:    parseInt(f.ldg_day,   10),
-        ldg_night:  parseInt(f.ldg_night, 10),
-        approaches,
-        start_time: f.start_time || null,
-        takeoff_time: (f as any).takeoff_time || null,
-        landing_time: (f as any).landing_time || null,
-        shutdown_time: f.shutdown_time || null,
-      };
+      if (!validate()) return;
+      setLoading(true);
+      try {
+          const acType = props.aircraft.find(a => a.reg === f.aircraft)?.type ?? '';
+          const payload = {
+              date: f.date,
+              aircraft: f.aircraft,
+              type: acType,
+              from: f.from,
+              to: f.to,
+              air_time: parseFloat(f.air_time),
+              pic: parseFloat(f.pic || f.air_time),
+              dual: parseFloat(f.dual),
+              sic: parseFloat(f.sic),
+              night: parseFloat(f.night),
+              ifr: parseFloat(f.ifr || '0'),
+              actual_imc: parseFloat(f.actual_imc),
+              simulated: parseFloat(f.simulated),
+              xc: parseFloat(f.xc),
+              xc_over_50nm: parseFloat(f.xc_over_50nm),
+              right_seat: parseFloat(f.right_seat),
+              multi_pilot: parseFloat(f.multi_pilot),
+              pilot_flying: parseFloat(f.pilot_flying || '0'),
+              holds: parseInt(f.holds || '0', 10),
+              ems: f.ems,
+              search_and_rescue: false,
+              aerial_work: false,
+              training: false,
+              checkride: false,
+              flight_review: false,
+              ipc: false,
+              ppc: f.ppc,
+              route: f.route || null,
+              pic_name: f.pic_name || null,
+              sic_name: f.sic_name || null,
+              ldg_day: parseInt(f.ldg_day, 10),
+              ldg_night: parseInt(f.ldg_night, 10),
+              approaches,
+              start_time: f.start_time || null,
+              takeoff_time: f.takeoff_time || null,
+              landing_time: f.landing_time || null,
+              shutdown_time: f.shutdown_time || null,
+          };
       const res = await fetch('/api/flights', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -398,36 +435,36 @@ export default function AddFlight(props: Props) {
 
           {/* Route */}
           <div>
-            <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">Route</label>
-            <input
-              value={(f as any).route || ''}
-              onChange={e => setField('route', e.target.value)}
-              placeholder="Direct"
-              className={inputClass()}
-            />
-            <p className="text-[10px] text-slate-500 mt-1">Leave empty for direct flight</p>
+              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">Route</label>
+              <input
+                  value={f.route}
+                  onChange={e => setField('route', e.target.value)}
+                  placeholder="Direct"
+                  className={inputClass()}
+              />
+              <p className="text-[10px] text-slate-500 mt-1">Leave empty for direct flight</p>
           </div>
-
+          
           {/* Crew fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">PIC Name</label>
-              <input
-                value={(f as any).pic_name || ''}
-                onChange={e => setField('pic_name', e.target.value)}
-                placeholder="Pilot in Command"
-                className={inputClass()}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">SIC / Student</label>
-              <input
-                value={(f as any).sic_name || ''}
-                onChange={e => setField('sic_name', e.target.value)}
-                placeholder="Second in Command / Student"
-                className={inputClass()}
-              />
-            </div>
+              <div>
+                  <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">PIC Name</label>
+                  <input
+                      value={f.pic_name}
+                      onChange={e => setField('pic_name', e.target.value)}
+                      placeholder="Pilot in Command"
+                      className={inputClass()}
+                  />
+              </div>
+              <div>
+                  <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider">SIC / Student</label>
+                  <input
+                      value={f.sic_name}
+                      onChange={e => setField('sic_name', e.target.value)}
+                      placeholder="Second in Command / Student"
+                      className={inputClass()}
+                  />
+              </div>
           </div>
 
           {/* Template selector */}
@@ -459,26 +496,26 @@ export default function AddFlight(props: Props) {
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1 justify-center">
-                <PlaneTakeoff className="w-3 h-3" /> Off
-              </label>
-              <input
-                type="time"
-                value={(f as any).takeoff_time || ''}
-                onChange={e => setField('takeoff_time', e.target.value)}
-                className={inputClass()}
-              />
+                <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1 justify-center">
+                    <PlaneTakeoff className="w-3 h-3" /> Off
+                </label>
+                <input
+                    type="time"
+                    value={f.takeoff_time}
+                    onChange={e => setField('takeoff_time', e.target.value)}
+                    className={inputClass()}
+                />
             </div>
             <div>
-              <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1 justify-center">
-                <PlaneLanding className="w-3 h-3" /> On
-              </label>
-              <input
-                type="time"
-                value={(f as any).landing_time || ''}
-                onChange={e => setField('landing_time', e.target.value)}
-                className={inputClass()}
-              />
+                <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1 justify-center">
+                    <PlaneLanding className="w-3 h-3" /> On
+                </label>
+                <input
+                    type="time"
+                    value={f.landing_time}
+                    onChange={e => setField('landing_time', e.target.value)}
+                    className={inputClass()}
+                />
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1 justify-center">
@@ -551,15 +588,15 @@ export default function AddFlight(props: Props) {
                 .filter(([key]) => isFieldVisible(key))
                 .map(([key, label]) => (
                   <div key={key} className="relative">
-                    <label className="block text-[10px] text-slate-500 mb-1 text-center">{label}</label>
-                    <input
-                      type="number"
-                      step={['ldg_day','ldg_night', 'holds'].includes(key) ? '1' : '0.1'}
-                      min="0"
-                      value={(f as any)[key] || '0'}
-                      onChange={e => setField(key, e.target.value)}
-                      className={`${inputClass(key)} text-center font-mono px-2 pr-6`}
-                    />
+                      <label className="block text-[10px] text-slate-500 mb-1 text-center">{label}</label>
+                      <input
+                          type="number"
+                          step={['ldg_day','ldg_night', 'holds'].includes(key) ? '1' : '0.1'}
+                          min="0"
+                          value={String((f as unknown as Record<string, string | boolean | number>)[key] || '0')}
+                          onChange={e => setField(key, e.target.value)}
+                          className={`${inputClass(key)} text-center font-mono px-2 pr-6`}
+                      />
                     {additionalFields.includes(key) && (
                       <button 
                         onClick={() => setAdditionalFields(prev => prev.filter(f => f !== key))}
@@ -621,60 +658,60 @@ export default function AddFlight(props: Props) {
 
           {/* Flags */}
           <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={(f as any).ems || false}
-                onChange={e => setField('ems', e.target.checked)}
-                className="rounded"
-              />
-              EMS / Medical
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={(f as any).training || false}
-                onChange={e => setField('training', e.target.checked)}
-                className="rounded"
-              />
-              Training
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={(f as any).checkride || false}
-                onChange={e => setField('checkride', e.target.checked)}
-                className="rounded"
-              />
-              Checkride
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={(f as any).flight_review || false}
-                onChange={e => setField('flight_review', e.target.checked)}
-                className="rounded"
-              />
-              Flight Review
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={(f as any).ipc || false}
-                onChange={e => setField('ipc', e.target.checked)}
-                className="rounded"
-              />
-              IPC
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={(f as any).ppc || false}
-                onChange={e => setField('ppc', e.target.checked)}
-                className="rounded"
-              />
-              PPC
-            </label>
+              <label className="flex items-center gap-2 text-sm">
+                  <input
+                      type="checkbox"
+                      checked={f.ems}
+                      onChange={e => setField('ems', e.target.checked)}
+                      className="rounded"
+                  />
+                  EMS / Medical
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                  <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={e => setField('training', e.target.checked)}
+                      className="rounded"
+                  />
+                  Training
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                  <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={e => setField('checkride', e.target.checked)}
+                      className="rounded"
+                  />
+                  Checkride
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                  <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={e => setField('flight_review', e.target.checked)}
+                      className="rounded"
+                  />
+                  Flight Review
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                  <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={e => setField('ipc', e.target.checked)}
+                      className="rounded"
+                  />
+                  IPC
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                  <input
+                      type="checkbox"
+                      checked={f.ppc}
+                      onChange={e => setField('ppc', e.target.checked)}
+                      className="rounded"
+                  />
+                  PPC
+              </label>
           </div>
 
           {/* Remarks */}

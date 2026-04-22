@@ -1,117 +1,106 @@
 export interface Flight {
-  id: number;
-  date: string;
-  aircraft: string;
-  type: string;
-  from: string;
-  to: string;
-  route?: string;
-  
-  // Block times
-  start_time?: string;      // HH:MM
-  shutdown_time?: string;   // HH:MM
-  block_time?: number;
-  
-  // Core time
-  air_time: number;
-  pic: number;
-  sic?: number;
-  dual?: number;
-  night?: number;
-  
-  // Instrument time
-  actual_imc?: number;
-  simulated?: number;
-  hood?: number;
-  approaches: Approach[];
-  holds?: number;
-  
-  // Role time
-  pilot_flying?: number;
-  pilot_monitoring?: number;
-  right_seat?: number;
-  copilot?: number;
-  instructor?: number;
-  student?: number;
-  
-  // Cross country
-  xc?: number;
-  xc_over_50nm?: number;
-  xc_over_100nm?: number;
-  xc_over_300nm?: number;
-  
-  // Aircraft characteristics
-  multi_engine?: number;
-  multi_pilot?: number;
-  complex?: number;
-  high_performance?: number;
-  tailwheel?: number;
-  turbine?: number;
-  jet?: number;
-  
-  // Landings
-  ldg_day: number;
-  ldg_night: number;
-  ldg_full_stop?: number;
-  ldg_touch_and_go?: number;
-  ldg_soft_field?: number;
-  ldg_short_field?: number;
-  
-  // Aircraft characteristic times
-  multi_engine?: number;
-  complex?: number;
-  high_performance?: number;
-  turbine?: number;
-  jet?: number;
-  
-  // Special operations
-  holds?: number;
-  ifr?: number;
-  ems?: boolean;
-  search_and_rescue?: boolean;
-  aerial_work?: boolean;
-  training?: boolean;
-  checkride?: boolean;
-  flight_review?: boolean;
-  ipc?: boolean;
-  ppc?: boolean;
-  banner_towing?: number;
-  glider_towing?: number;
-  formation?: number;
-  low_level?: number;
-  mountain?: number;
-  offshore?: number;
-  bush?: number;
-  combat?: number;
-  sling_load?: number;
-  hoist?: number;
-  aerobatic_time?: number;
-  
-  // Crew
-  pilot_in_command_name?: string;
-  pic_name?: string;
-  sic_name?: string;
-  copilot_name?: string;
-  instructor_name?: string;
-  students?: string;
-  additional_crew?: string;
-  
-  // Route
-  route?: string;
-  
-  // Admin
-  flight_number?: string;
-  duty_start?: string;
-  duty_end?: string;
-  hobbs_start?: number;
-  hobbs_end?: number;
-  tach_start?: number;
-  tach_end?: number;
-  
-  // Remarks and metadata
-  remarks?: string;
-  tags?: string[];
-  created_at?: string;
+    id: number;
+    date: string;
+    aircraft: string;
+    type: string;
+    from: string;
+    to: string;
+    route?: string;
+
+    // Block times
+    start_time?: string; // HH:MM
+    shutdown_time?: string; // HH:MM
+    block_time?: number;
+
+    // Core time
+    air_time: number;
+    pic: number;
+    sic?: number;
+    dual?: number;
+    night?: number;
+
+    // Instrument time
+    actual_imc?: number;
+    simulated?: number;
+    hood?: number;
+    approaches: Approach[];
+    holds?: number;
+    ifr?: number;
+
+    // Role time
+    pilot_flying?: number;
+    pilot_monitoring?: number;
+    right_seat?: number;
+    copilot?: number;
+    instructor?: number;
+    student?: number;
+
+    // Cross country
+    xc?: number;
+    xc_over_50nm?: number;
+    xc_over_100nm?: number;
+    xc_over_300nm?: number;
+
+    // Aircraft characteristics
+    multi_engine?: boolean;
+    multi_pilot?: number;
+    complex?: boolean;
+    high_performance?: boolean;
+    tailwheel?: boolean;
+    turbine?: boolean;
+    jet?: boolean;
+
+    // Landings
+    ldg_day: number;
+    ldg_night: number;
+    ldg_full_stop?: number;
+    ldg_touch_and_go?: number;
+    ldg_soft_field?: number;
+    ldg_short_field?: number;
+
+    // Special operations
+    ems?: boolean;
+    search_and_rescue?: boolean;
+    aerial_work?: boolean;
+    training?: boolean;
+    checkride?: boolean;
+    flight_review?: boolean;
+    ipc?: boolean;
+    ppc?: boolean;
+    banner_towing?: number;
+    glider_towing?: number;
+    formation?: number;
+    low_level?: number;
+    mountain?: number;
+    offshore?: number;
+    bush?: number;
+    combat?: number;
+    sling_load?: number;
+    hoist?: number;
+    aerobatic_time?: number;
+
+    // Crew
+    pilot_in_command_name?: string;
+    pic_name?: string;
+    sic_name?: string;
+    copilot_name?: string;
+    instructor_name?: string;
+    students?: string;
+    additional_crew?: string;
+
+    // Admin
+    flight_number?: string;
+    duty_start?: string;
+    duty_end?: string;
+    hobbs_start?: number;
+    hobbs_end?: number;
+    tach_start?: number;
+    tach_end?: number;
+
+    // Remarks and metadata
+    remarks?: string;
+    tags?: string[];
+    created_at?: string;
 }
 
 export interface FlightTemplate {
