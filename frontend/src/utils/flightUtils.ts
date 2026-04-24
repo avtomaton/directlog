@@ -139,19 +139,62 @@ export const evaluateCalculation = (expr: string, values: Record<string, number>
             }
         }
 
-        // Substitute known variables
-        const substituted = tokens.map(t => {
-            if (values[t] !== undefined) return String(values[t]);
-            // Only allow known variable names as identifiers
-            if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(t)) return '0';
+        // Substitute known variables into numeric values
+        const resolved: (number | string)[] = tokens.map(t => {
+            if (values[t] !== undefined) return values[t];
+            // Unknown identifiers become 0
+            if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(t)) return 0;
+            // Operators and parentheses stay as strings
             return t;
-        }).join('');
+        });
 
-        // Validate: only digits, operators, parentheses, and decimals should remain
-        if (!/^[0-9+\-*/().]+$/.test(substituted)) return 0;
+        // Recursive descent parser for arithmetic expressions
+        // Grammar: expr = term (('+' | '-') term)*
+        //          term = factor (('*' | '/') factor)*
+        //          factor = NUMBER | '(' expr ')' | '-' factor
+        let pos = 0;
 
-        // Use Function with "use strict" for slightly safer eval of arithmetic only
-        return Function(`"use strict"; return (${substituted})`)();
+        const peek = (): (number | string) | undefined => resolved[pos];
+        const consume = (): (number | string) => resolved[pos++];
+
+        const parseExpr = (): number => {
+            let result = parseTerm();
+            while (peek() === '+' || peek() === '-') {
+                const op = consume() as string;
+                const right = parseTerm();
+                result = op === '+' ? result + right : result - right;
+            }
+            return result;
+        };
+
+        const parseTerm = (): number => {
+            let result = parseFactor();
+            while (peek() === '*' || peek() === '/') {
+                const op = consume() as string;
+                const right = parseFactor();
+                result = op === '*' ? result * right : (right !== 0 ? result / right : 0);
+            }
+            return result;
+        };
+
+        const parseFactor = (): number => {
+            const token = peek();
+            if (token === '-') {
+                consume();
+                return -parseFactor();
+            }
+            if (token === '(') {
+                consume(); // '('
+                const result = parseExpr();
+                if (peek() === ')') consume(); // ')'
+                return result;
+            }
+            const val = consume();
+            return typeof val === 'number' ? val : parseFloat(String(val)) || 0;
+        };
+
+        const result = parseExpr();
+        return isNaN(result) ? 0 : result;
     } catch {
         return 0;
     }

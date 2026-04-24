@@ -50,11 +50,13 @@ export default function Logbook({ flights, settings, onCopyFlight, onEditFlight,
   const [allRows, setAllRows] = useState(false);
 
   useEffect(() => {
-    const handler = () => setAllRows(true);
-    window.addEventListener('beforeprint', handler);
+    const onBefore = () => setAllRows(true);
+    const onAfter = () => setAllRows(false);
+    window.addEventListener('beforeprint', onBefore);
+    window.addEventListener('afterprint', onAfter);
     return () => {
-      window.removeEventListener('beforeprint', handler);
-      setAllRows(false);
+      window.removeEventListener('beforeprint', onBefore);
+      window.removeEventListener('afterprint', onAfter);
     };
   }, []);
 

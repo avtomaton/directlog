@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Shield, Calendar, AlertCircle } from 'lucide-react';
+import { getAuthHeaders } from '../contexts/AuthContext';
 
 export default function FlightReviewModal({ onClose, onSave }: { onClose: () => void; onSave: () => void }) {
   const [form, setForm] = useState({
@@ -32,7 +33,7 @@ export default function FlightReviewModal({ onClose, onSave }: { onClose: () => 
     try {
       await fetch('/api/events', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ ...form, expiry, description: form.description || getDefaultDescription(form.type) })
       });
       onSave();

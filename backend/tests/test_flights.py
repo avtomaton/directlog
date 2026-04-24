@@ -7,7 +7,9 @@ def test_get_flights_empty(client, auth_headers, db_session):
     """Test getting flights when none exist."""
     response = client.get('/api/flights', headers=auth_headers)
     assert response.status_code == 200
-    assert response.get_json() == []
+    data = response.get_json()
+    assert data['flights'] == []
+    assert data['total'] == 0
 
 
 def test_add_flight_success(client, auth_headers, db_session, sample_airport, sample_aircraft):
@@ -65,13 +67,15 @@ def test_flight_isolation_between_users(client, app, db_session, sample_aircraft
 
     # User1 should only see their flight
     response1 = client.get('/api/flights', headers=headers1)
-    assert len(response1.get_json()) == 1
-    assert response1.get_json()[0]['air_time'] == 1.0
+    data1 = response1.get_json()
+    assert data1['total'] == 1
+    assert data1['flights'][0]['air_time'] == 1.0
 
     # User2 should only see their flight
     response2 = client.get('/api/flights', headers=headers2)
-    assert len(response2.get_json()) == 1
-    assert response2.get_json()[0]['air_time'] == 2.0
+    data2 = response2.get_json()
+    assert data2['total'] == 1
+    assert data2['flights'][0]['air_time'] == 2.0
 
 
 def test_delete_flight(client, auth_headers, db_session, sample_aircraft):
@@ -90,7 +94,7 @@ def test_delete_flight(client, auth_headers, db_session, sample_aircraft):
     
     # Verify deleted
     response = client.get('/api/flights', headers=auth_headers)
-    assert len(response.get_json()) == 0
+    assert response.get_json()['total'] == 0
 
 
 def test_update_flight(client, auth_headers, db_session, sample_aircraft):
@@ -112,6 +116,6 @@ def test_update_flight(client, auth_headers, db_session, sample_aircraft):
     
     # Verify updated
     response = client.get('/api/flights', headers=auth_headers)
-    data = response.get_json()[0]
+    data = response.get_json()['flights'][0]
     assert data['air_time'] == 2.0
     assert data['pic'] == 2.0

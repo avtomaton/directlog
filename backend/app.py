@@ -1,20 +1,37 @@
 """Flask application with SQLAlchemy and JWT authentication."""
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Load .env before any other imports that read env vars
+load_dotenv()
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 import database
-from auth import init_auth, hash_password, verify_password, create_tokens
+from auth import init_auth, hash_password, verify_password, create_tokens, admin_required
 from models import (
     User, UserSettings, Flight, Airport, SharedAircraft, UserAircraft,
     SharedTemplate, UserTemplate, CurrencyEvent
 )
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=os.environ.get('CORS_ORIGINS', '*').split(','))
 init_auth(app)
+
+# Rate limiting — storage backend configurable via env var.
+# For single-worker dev: memory:// (default)
+# For multi-worker prod: redis://localhost:6379 (shared across workers)
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri=os.environ.get('RATE_LIMIT_STORAGE_URI', 'memory://'),
+)
 
 
 # ============================================================================
@@ -22,6 +39,7 @@ init_auth(app)
 # ============================================================================
 
 @app.route('/api/auth/register', methods=['POST'])
+@limiter.limit('5 per minute')
 def register():
     """Register a new user."""
     data = request.json
@@ -68,6 +86,7 @@ def register():
 
 
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit('10 per minute')
 def login():
     """Login and get tokens."""
     data = request.json
@@ -103,9 +122,20 @@ def get_me():
         user = session.query(User).get(user_id)
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        return jsonify({'id': user.id, 'email': user.email, 'name': user.name})
+        return jsonify({'id': user.id, 'email': user.email, 'name': user.name, 'is_admin': user.is_admin})
     finally:
         session.close()
+
+
+@app.route('/api/auth/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+@limiter.limit('20 per minute')
+def refresh_token():
+    """Exchange a valid refresh token for a new access token."""
+    from flask_jwt_extended import create_access_token, get_jwt_identity
+    user_id = get_jwt_identity()
+    access_token = create_access_token(identity=user_id)
+    return jsonify({'access_token': access_token})
 
 
 # ============================================================================
@@ -199,29 +229,26 @@ def get_shared_templates():
 @app.route('/api/flights', methods=['GET'])
 @jwt_required()
 def get_flights():
-    """Get current user's flights."""
+    """Get current user's flights with pagination."""
     user_id = int(get_jwt_identity())
+    page = max(1, int(request.args.get('page', 1)))
+    per_page = min(100, int(request.args.get('per_page', 50)))
+
     session = database.get_session()
     try:
-        flights = session.query(Flight).filter(
+        query = session.query(Flight).filter(
             Flight.user_id == user_id
-        ).order_by(Flight.date.desc()).all()
-        return jsonify([{
-            'id': f.id,
-            'date': f.date.isoformat() if f.date else None,
-            'aircraft': f.aircraft_reg,
-            'from': f.departure.icao if f.departure else None,
-            'to': f.arrival.icao if f.arrival else None,
-            'air_time': f.air_time,
-            'pic': f.pic,
-            'approaches': f.approaches or [],
-            # ... include all fields
-            'night': f.night,
-            'ifr': f.ifr,
-            'xc': f.xc,
-            'ldg_day': f.ldg_day,
-            'ldg_night': f.ldg_night,
-        } for f in flights])
+        ).order_by(Flight.date.desc())
+
+        total = query.count()
+        flights = query.offset((page - 1) * per_page).limit(per_page).all()
+
+        return jsonify({
+            'flights': [f.to_dict() for f in flights],
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+        })
     finally:
         session.close()
 
@@ -298,7 +325,8 @@ def add_flight():
         return jsonify({'id': flight.id}), 201
     except Exception as e:
         session.rollback()
-        return jsonify({'error': str(e)}), 400
+        app.logger.error('Failed to add flight: %s', e)
+        return jsonify({'error': 'Failed to add flight'}), 400
     finally:
         session.close()
 
@@ -339,7 +367,7 @@ def manage_flight(flight_id):
         
         # Update numeric fields
         for field in ['air_time', 'pic', 'sic', 'dual', 'night', 'ifr', 'actual_imc',
-                      'simulated', 'xc', 'xc_over_50nm', 'right_seat', 'multi_pilot',
+                      'simulated_imc', 'xc', 'xc_over_50nm', 'right_seat', 'multi_pilot',
                       'pilot_flying', 'holds', 'multi_engine', 'complex', 'high_performance',
                       'turbine', 'jet', 'ldg_day', 'ldg_night']:
             if field in data:
@@ -364,7 +392,8 @@ def manage_flight(flight_id):
         return jsonify({'status': 'ok'})
     except Exception as e:
         session.rollback()
-        return jsonify({'error': str(e)}), 400
+        app.logger.error('Failed to update flight: %s', e)
+        return jsonify({'error': 'Failed to update flight'}), 400
     finally:
         session.close()
 
@@ -776,10 +805,264 @@ def get_currency():
 
 
 # ============================================================================
+# Admin Endpoints
+# ============================================================================
+
+@app.route('/api/admin/stats', methods=['GET'])
+@admin_required
+def admin_stats():
+    """Get platform-wide statistics."""
+    session = database.get_session()
+    try:
+        from sqlalchemy import func
+
+        total_users = session.query(func.count(User.id)).scalar()
+        total_flights = session.query(func.count(Flight.id)).scalar()
+        total_aircraft = session.query(func.count(UserAircraft.id)).scalar()
+        total_events = session.query(func.count(CurrencyEvent.id)).scalar()
+
+        # Total hours across all users
+        total_hours_result = session.query(func.coalesce(func.sum(Flight.air_time), 0)).scalar()
+        total_hours = round(float(total_hours_result), 1)
+
+        # Users registered in last 30 days
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        new_users_30d = session.query(func.count(User.id)).filter(
+            User.created_at >= thirty_days_ago
+        ).scalar()
+
+        # Flights in last 30 days
+        flights_30d = session.query(func.count(Flight.id)).filter(
+            Flight.date >= thirty_days_ago.date()
+        ).scalar()
+
+        # Hours in last 30 days
+        hours_30d_result = session.query(func.coalesce(func.sum(Flight.air_time), 0)).filter(
+            Flight.date >= thirty_days_ago.date()
+        ).scalar()
+        hours_30d = round(float(hours_30d_result), 1)
+
+        # Active users (flown in last 30 days)
+        active_users_30d = session.query(func.count(func.distinct(Flight.user_id))).filter(
+            Flight.date >= thirty_days_ago.date()
+        ).scalar()
+
+        # Average flights per user
+        avg_flights = round(total_flights / max(total_users, 1), 1)
+
+        # Top users by flight count
+        top_users_query = session.query(
+            User.id, User.name, User.email, func.count(Flight.id).label('flight_count'),
+            func.coalesce(func.sum(Flight.air_time), 0).label('total_hours')
+        ).join(Flight, User.id == Flight.user_id).group_by(User.id).order_by(
+            func.count(Flight.id).desc()
+        ).limit(10).all()
+
+        top_users = [{
+            'id': u.id,
+            'name': u.name or u.email,
+            'email': u.email,
+            'flight_count': u.flight_count,
+            'total_hours': round(float(u.total_hours), 1),
+        } for u in top_users_query]
+
+        # Users by regulation
+        regulation_counts = {}
+        for reg in session.query(UserSettings.regulation, func.count(UserSettings.id)).group_by(UserSettings.regulation).all():
+            regulation_counts[reg[0] or 'CARs'] = reg[1]
+
+        return jsonify({
+            'total_users': total_users,
+            'total_flights': total_flights,
+            'total_aircraft': total_aircraft,
+            'total_events': total_events,
+            'total_hours': total_hours,
+            'new_users_30d': new_users_30d,
+            'flights_30d': flights_30d,
+            'hours_30d': hours_30d,
+            'active_users_30d': active_users_30d,
+            'avg_flights_per_user': avg_flights,
+            'top_users': top_users,
+            'regulation_counts': regulation_counts,
+        })
+    finally:
+        session.close()
+
+
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def admin_users():
+    """List all users with summary stats."""
+    session = database.get_session()
+    try:
+        from sqlalchemy import func
+
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 25, type=int)
+        search = request.args.get('search', '', type=str).strip()
+
+        query = session.query(User).order_by(User.created_at.desc())
+
+        if search:
+            query = query.filter(
+                (User.email.ilike(f'%{search}%')) | (User.name.ilike(f'%{search}%'))
+            )
+
+        total = query.count()
+        users = query.offset((page - 1) * per_page).limit(per_page).all()
+
+        user_list = []
+        for u in users:
+            flight_count = session.query(func.count(Flight.id)).filter(Flight.user_id == u.id).scalar()
+            total_hours = session.query(func.coalesce(func.sum(Flight.air_time), 0)).filter(
+                Flight.user_id == u.id
+            ).scalar()
+            aircraft_count = session.query(func.count(UserAircraft.id)).filter(
+                UserAircraft.user_id == u.id
+            ).scalar()
+
+            user_list.append({
+                'id': u.id,
+                'email': u.email,
+                'name': u.name,
+                'is_admin': u.is_admin,
+                'created_at': u.created_at.isoformat() if u.created_at else None,
+                'flight_count': flight_count,
+                'total_hours': round(float(total_hours), 1),
+                'aircraft_count': aircraft_count,
+            })
+
+        return jsonify({
+            'users': user_list,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+        })
+    finally:
+        session.close()
+
+
+@app.route('/api/admin/users/<int:user_id>/toggle-admin', methods=['POST'])
+@admin_required
+def admin_toggle_admin(user_id):
+    """Toggle admin status for a user."""
+    session = database.get_session()
+    try:
+        user = session.query(User).get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Prevent self-demotion
+        current_user_id = int(get_jwt_identity())
+        if user.id == current_user_id:
+            return jsonify({'error': 'Cannot change your own admin status'}), 400
+
+        user.is_admin = not user.is_admin
+        session.commit()
+        return jsonify({'id': user.id, 'email': user.email, 'is_admin': user.is_admin})
+    except Exception:
+        session.rollback()
+        return jsonify({'error': 'Failed to update user'}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_user(user_id):
+    """Delete a user and all their data."""
+    session = database.get_session()
+    try:
+        current_user_id = int(get_jwt_identity())
+        if user_id == current_user_id:
+            return jsonify({'error': 'Cannot delete your own account'}), 400
+
+        user = session.query(User).get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Cascade delete user data
+        session.query(CurrencyEvent).filter_by(user_id=user_id).delete()
+        session.query(Flight).filter_by(user_id=user_id).delete()
+        session.query(UserAircraft).filter_by(user_id=user_id).delete()
+        session.query(UserTemplate).filter_by(user_id=user_id).delete()
+        session.query(UserSettings).filter_by(user_id=user_id).delete()
+        session.delete(user)
+        session.commit()
+        return jsonify({'message': f'User {user.email} deleted successfully'})
+    except Exception:
+        session.rollback()
+        return jsonify({'error': 'Failed to delete user'}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/admin/flights', methods=['GET'])
+@admin_required
+def admin_flights():
+    """Get recent flights across all users."""
+    session = database.get_session()
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 25, type=int)
+
+        query = session.query(Flight).order_by(Flight.date.desc())
+        total = query.count()
+        flights = query.offset((page - 1) * per_page).limit(per_page).all()
+
+        flight_list = []
+        for f in flights:
+            user = session.query(User).get(f.user_id)
+            flight_list.append({
+                'id': f.id,
+                'user_id': f.user_id,
+                'user_email': user.email if user else 'Unknown',
+                'date': f.date.isoformat() if f.date else None,
+                'aircraft_reg': f.aircraft_reg,
+                'air_time': f.air_time,
+                'pic': f.pic,
+                'night': f.night,
+                'ldg_day': f.ldg_day,
+                'ldg_night': f.ldg_night,
+                'route': f.route,
+                'remarks': f.remarks,
+            })
+
+        return jsonify({
+            'flights': flight_list,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+        })
+    finally:
+        session.close()
+
+
+# ============================================================================
+# Static File Serving (Production)
+# ============================================================================
+# In production (Docker), the built frontend is copied to ./static/.
+# Serve it via Flask so everything runs on a single port.
+# In development, Vite dev server handles frontend separately.
+
+STATIC_DIR = os.path.join(os.path.dirname(__file__), 'static')
+if os.path.isdir(STATIC_DIR):
+    from flask import send_from_directory
+
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve_spa(path):
+        """Serve the React SPA — all non-API routes return index.html."""
+        if path and os.path.exists(os.path.join(STATIC_DIR, path)):
+            return send_from_directory(STATIC_DIR, path)
+        return send_from_directory(STATIC_DIR, 'index.html')
+
+
+# ============================================================================
 # App Startup
 # ============================================================================
 
 if __name__ == '__main__':
     os.makedirs('data', exist_ok=True)
-    init_db()
+    database.init_db()
     app.run(debug=os.environ.get('FLASK_DEBUG', 'False').lower() == 'true', port=5001)

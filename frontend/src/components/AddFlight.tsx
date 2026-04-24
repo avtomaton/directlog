@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, X, AlertCircle, CheckCircle2, LogOut, LogIn, PlaneTakeoff, PlaneLanding } from 'lucide-react';
 import { Aircraft, FlightTemplate, AppSettings, Flight } from '../types';
+import { getAuthHeaders } from '../contexts/AuthContext';
 import { calculateDuration, calculateNightTime, evaluateCalculation, timeToHours } from '../utils/flightUtils';
 
 interface Props {
@@ -51,6 +52,10 @@ type FlightForm = {
     hoist: string;
     ems: boolean;
     ppc: boolean;
+    training: boolean;
+    checkride: boolean;
+    flight_review: boolean;
+    ipc: boolean;
     route: string;
     pic_name: string;
     sic_name: string;
@@ -95,6 +100,10 @@ const EMPTY_FORM: FlightForm = {
     hoist: '0',
     ems: false,
     ppc: false,
+    training: false,
+    checkride: false,
+    flight_review: false,
+    ipc: false,
     route: '',
     pic_name: '',
     sic_name: '',
@@ -165,7 +174,6 @@ export default function AddFlight(props: Props) {
   const [additionalFields, setAdditionalFields] = useState<string[]>([]);
   const [showPropertyMenu, setShowPropertyMenu] = useState(false);
   
-  const picAutoFilled = useRef(false);
   const setField = (key: string, value: string | boolean | number) => {
     setF(prev => {
       const next = { ...prev, [key]: value };
@@ -300,7 +308,7 @@ export default function AddFlight(props: Props) {
       const method = isEditing ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -673,7 +681,7 @@ export default function AddFlight(props: Props) {
               <label className="flex items-center gap-2 text-sm">
                   <input
                       type="checkbox"
-                      checked={false}
+                      checked={!!f.training}
                       onChange={e => setField('training', e.target.checked)}
                       className="rounded"
                   />
@@ -682,7 +690,7 @@ export default function AddFlight(props: Props) {
               <label className="flex items-center gap-2 text-sm">
                   <input
                       type="checkbox"
-                      checked={false}
+                      checked={!!f.checkride}
                       onChange={e => setField('checkride', e.target.checked)}
                       className="rounded"
                   />
@@ -691,7 +699,7 @@ export default function AddFlight(props: Props) {
               <label className="flex items-center gap-2 text-sm">
                   <input
                       type="checkbox"
-                      checked={false}
+                      checked={!!f.flight_review}
                       onChange={e => setField('flight_review', e.target.checked)}
                       className="rounded"
                   />
@@ -700,7 +708,7 @@ export default function AddFlight(props: Props) {
               <label className="flex items-center gap-2 text-sm">
                   <input
                       type="checkbox"
-                      checked={false}
+                      checked={!!f.ipc}
                       onChange={e => setField('ipc', e.target.checked)}
                       className="rounded"
                   />

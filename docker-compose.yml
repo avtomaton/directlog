@@ -1,0 +1,47 @@
+# =============================================================================
+# DirectLog - Docker Compose for Production
+# =============================================================================
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose logs -f app    # Follow app logs
+#   docker compose down           # Stop all services
+#
+# Setup:
+#   1. Copy backend/.env.example to backend/.env
+#   2. Edit backend/.env (set JWT_SECRET_KEY, CORS_ORIGINS, etc.)
+#   3. Run: docker compose up -d
+# =============================================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-5001}:5001"
+    env_file:
+      - ./backend/.env
+    environment:
+      - RATE_LIMIT_STORAGE_URI=redis://redis:6379
+      - DATABASE_URL=sqlite:///data/logbook.db
+    volumes:
+      - app-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  redis-data:

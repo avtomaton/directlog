@@ -4,6 +4,7 @@ interface User {
   id: number;
   email: string;
   name: string;
+  is_admin?: boolean;
 }
 
 interface AuthContextType {
@@ -20,6 +21,25 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const API_URL = '/api';
+
+/** Attempt to refresh the access token using the stored refresh token. */
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return null;
+
+  try {
+    const res = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${refreshToken}`, 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    localStorage.setItem('token', data.access_token);
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -43,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         .catch(() => {
           localStorage.removeItem('token');
+          localStorage.removeItem('refresh_token');
           setToken(null);
           setUser(null);
         })
@@ -66,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const data = await response.json();
     localStorage.setItem('token', data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
     setToken(data.access_token);
 
     // Fetch user info
@@ -89,12 +111,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(error.error || 'Registration failed');
     }
 
-    // Auto-login after registration
-    await login(email, password);
+    // Use tokens from register response directly — avoids 2 extra API calls
+    const data = await response.json();
+    localStorage.setItem('token', data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
+    setToken(data.access_token);
+    setUser(data.user);
   };
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
     setToken(null);
     setUser(null);
   };
@@ -131,4 +158,35 @@ export function useAuth() {
 export function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('token');
   return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+/**
+ * Authenticated fetch with automatic token refresh.
+ * On 401, attempts to refresh the access token once, then retries the request.
+ * If refresh also fails, clears auth state and throws.
+ */
+export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = localStorage.getItem('token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401) {
+    // Try to refresh the token
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      // Retry with new token
+      headers['Authorization'] = `Bearer ${newToken}`;
+      return fetch(url, { ...options, headers });
+    }
+    // Refresh failed — clear auth state
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+  }
+
+  return response;
 }

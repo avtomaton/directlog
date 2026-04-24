@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Save, Globe, MapPin, Moon, Calculator, RotateCcw, Plus, Edit2, Trash2 } from 'lucide-react';
+import { Save, Globe, Moon, Calculator, RotateCcw, Plus, Edit2, Trash2 } from 'lucide-react';
 import { AppSettings, Regulation, FlightTemplate } from '../types';
+import { defaultSettings } from '../utils/defaultSettings';
 
 interface Props {
   settings: AppSettings;
@@ -10,24 +11,15 @@ interface Props {
   onDeleteTemplate: (id: number) => void;
 }
 
-const defaultSettings: AppSettings = {
-  regulation: 'CARs',
-  homeBase: '',
-  nightDefinition: 'sunset_30',
-  nightStartTime: 'sunset+30',
-  nightEndTime: 'sunrise-30',
-  nightLandingStart: 'sunset+60',
-  nightLandingEnd: 'sunrise-60',
-  totalTimeDecimals: 1,
-  totalTimeUnit: 'hours',
-  defaultTemplateId: null,
-  ifrDeductionMinutes: 12,
-};
-
 export default function SettingsPage({ settings, templates, onSave, onSaveTemplate, onDeleteTemplate }: Props) {
   const [local, setLocal] = useState<AppSettings>({ ...settings });
   const [showEditor, setShowEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<FlightTemplate | null>(null);
+
+  // Sync local state when parent settings change (e.g. after backend load)
+  useEffect(() => {
+    setLocal({ ...settings });
+  }, [settings]);
 
   const update = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setLocal(prev => ({ ...prev, [key]: value }));
@@ -491,7 +483,7 @@ export default function SettingsPage({ settings, templates, onSave, onSaveTempla
                       <label key={key} className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
-                          checked={editingTemplate.calculations?.hasOwnProperty(key)}
+                          checked={Object.prototype.hasOwnProperty.call(editingTemplate.calculations ?? {}, key)}
                           onChange={e => {
                             const newCalcs = { ...editingTemplate.calculations };
                             if (e.target.checked) {

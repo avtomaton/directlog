@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Moon, Sun, Plane, Upload, PlusCircle, Settings, LogOut, User as UserIcon } from 'lucide-react';
+import { Moon, Sun, Plane, Upload, PlusCircle, Settings, LogOut, User as UserIcon, Shield } from 'lucide-react';
 import { AuthProvider, useAuth, getAuthHeaders } from './contexts/AuthContext';
 import AuthModal from './components/AuthModal';
 import Dashboard from './components/Dashboard';
@@ -9,21 +9,9 @@ import Reports from './components/Reports';
 import Aircraft from './components/Aircraft';
 import CSVImporter from './components/CSVImporter';
 import SettingsPage from './components/Settings';
-import { Flight, Aircraft as AircraftType, CurrencyEvent, AppSettings } from './types';
-
-const defaultSettings: AppSettings = {
-  regulation: 'CARs',
-  homeBase: '',
-  nightDefinition: 'sunset_30',
-  nightStartTime: 'sunset+30',
-  nightEndTime: 'sunrise-30',
-  nightLandingStart: 'sunset+60',
-  nightLandingEnd: 'sunrise-60',
-  totalTimeDecimals: 1,
-  totalTimeUnit: 'hours',
-  defaultTemplateId: null,
-  ifrDeductionMinutes: 12,
-};
+import Admin from './components/Admin';
+import { Flight, Aircraft as AircraftType, CurrencyEvent, AppSettings, FlightTemplate } from './types';
+import { defaultSettings } from './utils/defaultSettings';
 
 function AppContent() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
@@ -34,9 +22,9 @@ function AppContent() {
   const [events, setEvents] = useState<CurrencyEvent[]>([]);
   const [showImporter, setShowImporter] = useState(false);
   const [showAddFlight, setShowAddFlight] = useState(false);
-  const [editingFlight, setEditingFlight] = useState<any>(null);
+  const [editingFlight, setEditingFlight] = useState<Partial<Flight> | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<FlightTemplate[]>([]);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -57,7 +45,8 @@ function AppContent() {
         fetch('/api/events', { headers }).then(r => r.json()).catch(() => []),
         fetch('/api/templates', { headers }).then(r => r.json()).catch(() => []),
       ]);
-      setFlights(f);
+      // API returns { flights, total, page, per_page } for paginated response
+      setFlights(Array.isArray(f) ? f : (f.flights ?? []));
       setAircraft(a);
       setEvents(e);
       setTemplates(t);
@@ -89,7 +78,7 @@ function AppContent() {
       try {
         const parsed = JSON.parse(savedLocal);
         if (parsed.regulation) setSettings(parsed);
-      } catch {}
+      } catch { /* ignore invalid localStorage data */ }
     }
     if (isAuthenticated) {
       fetch('/api/settings', { headers: getAuthHeaders() })
@@ -144,6 +133,7 @@ function AppContent() {
     { id: 'reports', label: 'Reports' },
     { id: 'aircraft', label: 'Aircraft' },
     { id: 'settings', label: 'Settings' },
+    ...(user?.is_admin ? [{ id: 'admin', label: 'Admin', icon: Shield }] : []),
   ];
 
   // Show loading or auth modal
@@ -385,6 +375,9 @@ function AppContent() {
                 }
               }}
             />
+          )}
+          {tab === 'admin' && user?.is_admin && (
+            <Admin />
           )}
         </div>
       </main>

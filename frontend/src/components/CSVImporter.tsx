@@ -102,7 +102,7 @@ export default function CSVImporter({ onClose, onImport }: { onClose: () => void
               <FileText className="w-12 h-12 mx-auto mb-4 text-slate-500" />
               <div className="text-lg font-medium mb-2">Drop CSV file here</div>
               <div className="text-sm text-slate-400 mb-4">or click to browse</div>
-              <div className="text-xs text-slate-500">Exports from myflightbook.com Ã¢ÂÂ Logbook Ã¢ÂÂ Download</div>
+              <div className="text-xs text-slate-500">Exports from myflightbook.com → Logbook → Download</div>
               <input id="csv-input" type="file" accept=".csv" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
             </div>
           ) : (
@@ -111,7 +111,7 @@ export default function CSVImporter({ onClose, onImport }: { onClose: () => void
                 <Check className="w-5 h-5 text-success" />
                 <div>
                   <div className="font-medium">{file.name}</div>
-                  <div className="text-xs text-slate-400">{(file.size / 1024).toFixed(1)} KB Ã¢ÂÂ¢ {preview.length} rows preview</div>
+                  <div className="text-xs text-slate-400">{(file.size / 1024).toFixed(1)} KB • {preview.length} rows preview</div>
                 </div>
               </div>
 

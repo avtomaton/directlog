@@ -10,7 +10,10 @@ from flask_jwt_extended import (
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # JWT Configuration
-JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'dev-secret-key-change-in-production')
+JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
+if not JWT_SECRET_KEY:
+    raise RuntimeError('JWT_SECRET_KEY environment variable must be set. '
+                       'For development, set it in your shell or .env file.')
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
 JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
@@ -50,6 +53,30 @@ def jwt_required_custom(fn):
             return fn(*args, **kwargs)
         except Exception:
             return jsonify({'error': 'Authentication required'}), 401
+    return wrapper
+
+
+def admin_required(fn):
+    """Decorator that requires JWT authentication AND admin privileges."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            verify_jwt_in_request()
+        except Exception:
+            return jsonify({'error': 'Authentication required'}), 401
+
+        from models import User
+        from database import get_session
+        user_id = int(get_jwt_identity())
+        session = get_session()
+        try:
+            user = session.query(User).get(user_id)
+            if not user or not user.is_admin:
+                return jsonify({'error': 'Admin access required'}), 403
+        finally:
+            session.close()
+
+        return fn(*args, **kwargs)
     return wrapper
 
 
