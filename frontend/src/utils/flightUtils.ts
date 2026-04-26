@@ -95,7 +95,9 @@ export const calculateNightTime = (
  */
 export const timeToHours = (time: string): number => {
   if (!time) return 0;
-  const [h, m] = time.split(':').map(Number);
+  const parts = time.split(':').map(Number);
+  if (parts.some(isNaN)) return 0;
+  const [h, m = 0] = parts;
   return h + m / 60;
 };
 
