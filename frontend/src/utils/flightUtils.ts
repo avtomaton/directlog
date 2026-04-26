@@ -20,18 +20,20 @@ export const calculateSunTimes = (date: string, lat: number = 53.5, lon: number 
   
   // Hour angle for sunrise/sunset (civil twilight - 6 degrees below horizon)
   const hourAngle = Math.acos(
-    Math.sin(-6 * Math.PI / 180) / (Math.cos(latRad) * Math.cos(declination)) - 
+    Math.sin(-6 * Math.PI / 180) / (Math.cos(latRad) * Math.cos(declination)) -
     Math.tan(latRad) * Math.tan(declination)
   ) * 180 / Math.PI;
   
-  const sunriseHour = 12 - (hourAngle / 15) - (lon / 15) - (equationOfTime / 60);
-  const sunsetHour = 12 + (hourAngle / 15) - (lon / 15) - (equationOfTime / 60);
+  // Solar formula gives UTC hours; convert to local time via timezone offset
+  const tzOffsetHours = d.getTimezoneOffset() / 60;
+  const sunriseHour = 12 - (hourAngle / 15) - (lon / 15) - (equationOfTime / 60) - tzOffsetHours;
+  const sunsetHour = 12 + (hourAngle / 15) - (lon / 15) - (equationOfTime / 60) - tzOffsetHours;
   
   const sunrise = new Date(date);
-  sunrise.setHours(Math.floor(sunriseHour), Math.floor((sunriseHour % 1) * 60), 0, 0);
+  sunrise.setHours(Math.floor(sunriseHour), Math.floor((Math.abs(sunriseHour) % 1) * 60), 0, 0);
   
   const sunset = new Date(date);
-  sunset.setHours(Math.floor(sunsetHour), Math.floor((sunsetHour % 1) * 60), 0, 0);
+  sunset.setHours(Math.floor(sunsetHour), Math.floor((Math.abs(sunsetHour) % 1) * 60), 0, 0);
   
   return { sunrise, sunset };
 };
@@ -63,7 +65,12 @@ export const calculateNightTime = (
   
   const { sunrise, sunset } = calculateSunTimes(date);
   const nightStart = parseTimeOffset(settings.nightStartTime, sunrise, sunset);
-  const nightEnd = parseTimeOffset(settings.nightEndTime, sunrise, sunset);
+  let nightEnd = parseTimeOffset(settings.nightEndTime, sunrise, sunset);
+  
+  // Night crosses midnight (e.g., sunset+30 today to sunrise-30 tomorrow)
+  if (nightEnd <= nightStart) {
+    nightEnd = new Date(nightEnd.getTime() + 24 * 60 * 60 * 1000);
+  }
   
   // Convert flight times to Date objects
   const [startH, startM] = start.split(':').map(Number);
@@ -80,13 +87,25 @@ export const calculateNightTime = (
     flightEnd.setDate(flightEnd.getDate() + 1);
   }
   
-  // Calculate overlap between flight period and night period
-  const overlapStart = new Date(Math.max(flightStart.getTime(), nightStart.getTime()));
-  const overlapEnd = new Date(Math.min(flightEnd.getTime(), nightEnd.getTime()));
+  // Calculate overlap with the night period starting on this date
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  let nightMinutes = 0;
   
-  if (overlapEnd <= overlapStart) return 0;
+  const overlapStart1 = new Date(Math.max(flightStart.getTime(), nightStart.getTime()));
+  const overlapEnd1 = new Date(Math.min(flightEnd.getTime(), nightEnd.getTime()));
+  if (overlapEnd1 > overlapStart1) {
+    nightMinutes += (overlapEnd1.getTime() - overlapStart1.getTime()) / 60000;
+  }
   
-  const nightMinutes = (overlapEnd.getTime() - overlapStart.getTime()) / 60000;
+  // Also check overlap with the previous night's tail end (for early morning flights)
+  const nightStartPrev = new Date(nightStart.getTime() - MS_PER_DAY);
+  const nightEndPrev = new Date(nightEnd.getTime() - MS_PER_DAY);
+  const overlapStart2 = new Date(Math.max(flightStart.getTime(), nightStartPrev.getTime()));
+  const overlapEnd2 = new Date(Math.min(flightEnd.getTime(), nightEndPrev.getTime()));
+  if (overlapEnd2 > overlapStart2) {
+    nightMinutes += (overlapEnd2.getTime() - overlapStart2.getTime()) / 60000;
+  }
+  
   return nightMinutes / 60;
 };
 

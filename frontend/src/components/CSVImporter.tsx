@@ -4,7 +4,7 @@ import Papa from 'papaparse';
 
 export default function CSVImporter({ onClose, onImport }: { onClose: () => void; onImport: () => void }) {
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<any[]>([]);
+  const [preview, setPreview] = useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState({
     date: 'Date',
     aircraft: 'Aircraft',
@@ -27,7 +27,7 @@ export default function CSVImporter({ onClose, onImport }: { onClose: () => void
       header: true,
       preview: 5,
       complete: (results) => {
-        setPreview(results.data);
+        setPreview(results.data as Record<string, string>[]);
         // Auto-detect columns
         const headers = results.meta.fields || [];
         const newMapping = { ...mapping };
@@ -57,7 +57,7 @@ export default function CSVImporter({ onClose, onImport }: { onClose: () => void
       alert(`Imported ${data.imported} flights`);
       onImport();
       onClose();
-    } catch (err) {
+    } catch (_err) {
       // Fallback: parse locally
       Papa.parse(file, {
         header: true,
@@ -142,7 +142,7 @@ export default function CSVImporter({ onClose, onImport }: { onClose: () => void
                       <tbody>
                         {preview.slice(0, 3).map((row, i) => (
                           <tr key={i} className="border-t border-white/5">
-                            {Object.values(row).slice(0, 8).map((v: any, j) => <td key={j} className="px-3 py-2 truncate max-w-[120px]">{v}</td>)}
+                            {Object.values(row).slice(0, 8).map((v: string, j) => <td key={j} className="px-3 py-2 truncate max-w-[120px]">{v}</td>)}
                           </tr>
                         ))}
                       </tbody>

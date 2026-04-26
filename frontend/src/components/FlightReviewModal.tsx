@@ -38,7 +38,7 @@ export default function FlightReviewModal({ onClose, onSave }: { onClose: () => 
       });
       onSave();
       onClose();
-    } catch (err) {
+    } catch (_err) {
       console.log('Demo mode - event logged locally');
       onSave();
       onClose();

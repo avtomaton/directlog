@@ -78,7 +78,7 @@ export default function Admin() {
       if (!res.ok) throw new Error('Failed to load stats');
       const data = await res.json();
       setStats(data);
-    } catch (err) {
+    } catch (_err) {
       setError('Failed to load admin statistics');
     } finally {
       setLoading(false);
@@ -96,7 +96,7 @@ export default function Admin() {
       setUsers(data.users);
       setUsersTotal(data.total);
       setUsersPage(page);
-    } catch (err) {
+    } catch (_err) {
       setError('Failed to load users');
     } finally {
       setLoading(false);
@@ -113,7 +113,7 @@ export default function Admin() {
       setFlights(data.flights);
       setFlightsTotal(data.total);
       setFlightsPage(page);
-    } catch (err) {
+    } catch (_err) {
       setError('Failed to load flights');
     } finally {
       setLoading(false);

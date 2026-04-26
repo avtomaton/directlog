@@ -112,7 +112,7 @@ export interface FlightTemplate {
     [field: string]: string;    // e.g. "ifr": "shutdown - start - 12"
   };
   defaults: {                   // Static default values
-    [field: string]: any;
+    [field: string]: string | number | boolean | null;
   };
   icon?: string;
   color?: string;
@@ -126,7 +126,7 @@ export interface FieldDefinition {
   description?: string;
   unit?: string;
   step?: number;
-  default?: any;
+  default?: string | number | boolean | null;
   hidden?: boolean;
 }
 
@@ -166,7 +166,7 @@ export interface CurrencyStatus {
 export interface CurrencyEvent {
   id: number;
   date: string;
-  type: 'flight_review' | 'ipc' | 'ppc' | 'seminar' | 'self_paced' | 'exam';
+  type: 'flight_review' | 'ipc' | 'ppc' | 'seminar' | 'self_paced' | 'exam' | 'bfr' | 'proficiency_check' | 'skill_test' | 'opc' | 'lpc' | 'instrument_proficiency' | 'ir_check';
   description: string;
   instructor?: string;
   expiry?: string;
