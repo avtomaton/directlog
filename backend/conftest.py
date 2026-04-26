@@ -33,9 +33,10 @@ def app(db_engine):
     """Create Flask app with test database."""
     from app import app as flask_app
     import database
-    
+
     flask_app.config['TESTING'] = True
-    
+    flask_app.config['RATELIMIT_ENABLED'] = False  # Disable rate limiting in tests
+
     # Override database for testing
     original_engine = database.engine
     original_session = database.Session

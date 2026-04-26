@@ -76,7 +76,7 @@ jobs:
 
       - name: Run tests
         env:
-          JWT_SECRET_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'test-secret-key-for-ci-only' }}
         run: python -m pytest tests/ -v
 
   # ---------------------------------------------------------------------------

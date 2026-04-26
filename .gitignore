@@ -10,4 +10,7 @@ backend/data/*.db
 backup/*
 data/*
 frontend/dist/*
+.env
+backend/.env
+backend/venv/
 

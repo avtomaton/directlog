@@ -238,7 +238,7 @@ export default function AddFlight(props: Props) {
         if (key === 'actual_imc') return;
         
         const result = evaluateCalculation(expr as string, values);
-        if (!isNaN(result)) {
+        if (!Number.isNaN(result)) {
           setField(key, result.toFixed(1));
         }
       });
@@ -252,9 +252,9 @@ export default function AddFlight(props: Props) {
     if (!f.from.trim()) e.from      = 'Required';
     if (!f.to.trim())   e.to        = 'Required';
     const at = parseFloat(f.air_time);
-    if (!f.air_time || isNaN(at) || at <= 0) e.air_time = 'Must be > 0';
+    if (!f.air_time || Number.isNaN(at) || at <= 0) e.air_time = 'Must be > 0';
     const p = parseFloat(f.pic);
-    if (f.pic && !isNaN(p) && p > at) e.pic = 'Cannot exceed air time';
+    if (f.pic && !Number.isNaN(p) && p > at) e.pic = 'Cannot exceed air time';
     setErrors(e);
     return Object.keys(e).length === 0;
   };

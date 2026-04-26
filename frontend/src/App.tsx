@@ -26,6 +26,7 @@ function AppContent() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [templates, setTemplates] = useState<FlightTemplate[]>([]);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!isAuthenticated) {
@@ -50,8 +51,10 @@ function AppContent() {
       setAircraft(a);
       setEvents(e);
       setTemplates(t);
-    } catch {
-      console.log('API unavailable — using sample data');
+      setError(null); // Clear any previous errors
+    } catch (err) {
+      console.error('API unavailable:', err);
+      setError('Unable to connect to server. Using offline mode with sample data.');
       setFlights(sampleFlights);
       setAircraft(sampleAircraft);
       setEvents(sampleEvents);
@@ -145,9 +148,21 @@ function AppContent() {
     );
   }
 
+  // Show error banner if API is unavailable
+  const errorBanner = error ? (
+    <div className="bg-yellow-500/15 border-b border-yellow-500/40 text-yellow-400 text-sm px-4 py-2 text-center">
+      <span className="mr-2">⚠️</span>
+      {error}
+      <button onClick={() => setError(null)} className="ml-4 text-yellow-300 hover:text-yellow-100">
+        Dismiss
+      </button>
+    </div>
+  ) : null;
+
   if (!isAuthenticated) {
     return (
       <>
+        {errorBanner}
         <div className="min-h-screen gradient-bg flex items-center justify-center p-4">
           <div className="text-center max-w-md">
             <div className="w-16 h-16 rounded-2xl btn-primary grid place-items-center shadow-lg mx-auto mb-6">
@@ -181,6 +196,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen gradient-bg transition-colors duration-300">
+      {errorBanner}
       <header className="sticky top-0 z-40 glass border-b border-slate-200 dark:border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">

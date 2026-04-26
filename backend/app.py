@@ -18,6 +18,11 @@ from models import (
     User, UserSettings, Flight, Airport, SharedAircraft, UserAircraft,
     SharedTemplate, UserTemplate, CurrencyEvent
 )
+from schemas import (
+    flight_schema, flight_update_schema, aircraft_schema, aircraft_update_schema,
+    template_schema, template_update_schema, event_schema, event_update_schema,
+    settings_schema
+)
 
 app = Flask(__name__)
 CORS(app, origins=os.environ.get('CORS_ORIGINS', '*').split(','))
@@ -26,13 +31,15 @@ init_auth(app)
 # Rate limiting — storage backend configurable via env var.
 # For single-worker dev: memory:// (default)
 # For multi-worker prod: redis://localhost:6379 (shared across workers)
+# Don't pass app=app here; use init_app() later so config changes take effect
 limiter = Limiter(
     get_remote_address,
-    app=app,
     default_limits=[],
     storage_uri=os.environ.get('RATE_LIMIT_STORAGE_URI', 'memory://'),
 )
 
+# Initialize limiter with app (allows config changes to take effect)
+limiter.init_app(app)
 
 # ============================================================================
 # Auth Endpoints (Public)
@@ -259,15 +266,17 @@ def add_flight():
     """Add a new flight."""
     user_id = int(get_jwt_identity())
     data = request.json
-    
-    if not data.get('date') or not data.get('aircraft'):
-        return jsonify({'error': 'date and aircraft are required'}), 400
+
+    # Validate input using Marshmallow schema
+    errors = flight_schema.validate(data)
+    if errors:
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
 
     session = database.get_session()
     try:
         # Parse date
         flight_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-        
+
         # Look up airport IDs
         departure = None
         arrival = None
@@ -301,6 +310,7 @@ def add_flight():
             high_performance=data.get('high_performance', 0),
             turbine=data.get('turbine', 0),
             jet=data.get('jet', 0),
+            medevac=data.get('medevac', False),
             ems=data.get('ems', False),
             search_and_rescue=data.get('search_and_rescue', False),
             aerial_work=data.get('aerial_work', False),
@@ -342,7 +352,7 @@ def manage_flight(flight_id):
             Flight.id == flight_id,
             Flight.user_id == user_id
         ).first()
-        
+
         if not flight:
             return jsonify({'error': 'Flight not found'}), 404
 
@@ -350,10 +360,15 @@ def manage_flight(flight_id):
             session.delete(flight)
             session.commit()
             return jsonify({'status': 'ok'})
-        
+
         # PUT - update
         data = request.json
-        
+
+        # Validate input using Marshmallow schema
+        errors = flight_update_schema.validate(data)
+        if errors:
+            return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
         if 'date' in data:
             flight.date = datetime.strptime(data['date'], '%Y-%m-%d').date()
         if 'aircraft' in data:
@@ -364,21 +379,25 @@ def manage_flight(flight_id):
         if 'to' in data:
             arrival = session.query(Airport).filter(Airport.icao == data['to'].upper()).first()
             flight.arrival_id = arrival.id if arrival else None
-        
+
         # Update numeric fields
         for field in ['air_time', 'pic', 'sic', 'dual', 'night', 'ifr', 'actual_imc',
-                      'simulated_imc', 'xc', 'xc_over_50nm', 'right_seat', 'multi_pilot',
+                      'xc', 'xc_over_50nm', 'right_seat', 'multi_pilot',
                       'pilot_flying', 'holds', 'multi_engine', 'complex', 'high_performance',
                       'turbine', 'jet', 'ldg_day', 'ldg_night']:
             if field in data:
                 setattr(flight, field, data[field])
-        
+
+        # Handle simulated_imc (API accepts 'simulated', model column is 'simulated_imc')
+        if 'simulated' in data:
+            flight.simulated_imc = data['simulated']
+
         # Update boolean fields
-        for field in ['ems', 'search_and_rescue', 'aerial_work', 'training', 
+        for field in ['medevac', 'ems', 'search_and_rescue', 'aerial_work', 'training',
                       'checkride', 'flight_review', 'ipc', 'ppc']:
             if field in data:
                 setattr(flight, field, data[field])
-        
+
         if 'route' in data:
             flight.route = data['route']
         if 'pic_name' in data:
@@ -387,7 +406,7 @@ def manage_flight(flight_id):
             flight.sic_name = data['sic_name']
         if 'approaches' in data:
             flight.approaches = data['approaches']
-        
+
         session.commit()
         return jsonify({'status': 'ok'})
     except Exception as e:
@@ -429,8 +448,14 @@ def add_user_aircraft():
     """Add aircraft to user's account (from shared DB or custom)."""
     user_id = int(get_jwt_identity())
     data = request.json
+
+    # Validate input using Marshmallow schema
+    errors = aircraft_schema.validate(data)
+    if errors:
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
     reg = data.get('reg', '').strip().upper()
-    
+
     if not reg:
         return jsonify({'error': 'Registration required'}), 400
 
@@ -480,7 +505,7 @@ def manage_user_aircraft(reg):
             UserAircraft.user_id == user_id,
             UserAircraft.reg == reg
         ).first()
-        
+
         if not aircraft:
             return jsonify({'error': 'Aircraft not found'}), 404
 
@@ -488,9 +513,15 @@ def manage_user_aircraft(reg):
             session.delete(aircraft)
             session.commit()
             return jsonify({'status': 'ok'})
-        
+
         # PUT - update
         data = request.json
+
+        # Validate input using Marshmallow schema
+        errors = aircraft_update_schema.validate(data)
+        if errors:
+            return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
         if 'hidden' in data:
             aircraft.hidden = data['hidden']
         if 'notes' in data:
@@ -499,7 +530,7 @@ def manage_user_aircraft(reg):
             aircraft.total_time = data['total_time']
         if 'last_flown' in data:
             aircraft.last_flown = data['last_flown']
-        
+
         session.commit()
         return jsonify({'status': 'ok'})
     finally:
@@ -537,8 +568,14 @@ def create_user_template():
     """Create or copy a template."""
     user_id = int(get_jwt_identity())
     data = request.json
+
+    # Validate input using Marshmallow schema
+    errors = template_schema.validate(data)
+    if errors:
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
     name = data.get('name', '').strip()
-    
+
     if not name:
         return jsonify({'error': 'Name required'}), 400
 
@@ -549,7 +586,7 @@ def create_user_template():
             shared = session.query(SharedTemplate).get(data['shared_template_id'])
             if not shared:
                 return jsonify({'error': 'Shared template not found'}), 404
-            
+
             template = UserTemplate(
                 user_id=user_id,
                 shared_template_id=shared.id,
@@ -568,7 +605,7 @@ def create_user_template():
                 fields=data.get('fields', []),
                 calculations=data.get('calculations', {})
             )
-        
+
         session.add(template)
         session.commit()
         return jsonify({'id': template.id}), 201
@@ -587,7 +624,7 @@ def manage_template(template_id):
             UserTemplate.id == template_id,
             UserTemplate.user_id == user_id
         ).first()
-        
+
         if not template:
             return jsonify({'error': 'Template not found'}), 404
 
@@ -595,9 +632,15 @@ def manage_template(template_id):
             session.delete(template)
             session.commit()
             return jsonify({'status': 'ok'})
-        
+
         # PUT - update
         data = request.json
+
+        # Validate input using Marshmallow schema
+        errors = template_update_schema.validate(data)
+        if errors:
+            return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
         if 'name' in data:
             template.name = data['name']
         if 'description' in data:
@@ -608,7 +651,7 @@ def manage_template(template_id):
         if 'calculations' in data:
             template.calculations = data['calculations']
             template.is_modified = True
-        
+
         session.commit()
         return jsonify({'status': 'ok'})
     finally:
@@ -647,9 +690,11 @@ def add_event():
     """Add a currency event."""
     user_id = int(get_jwt_identity())
     data = request.json
-    
-    if not data.get('date') or not data.get('type'):
-        return jsonify({'error': 'date and type required'}), 400
+
+    # Validate input using Marshmallow schema
+    errors = event_schema.validate(data)
+    if errors:
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
 
     session = database.get_session()
     try:
@@ -657,7 +702,7 @@ def add_event():
         expiry = None
         if data.get('expiry'):
             expiry = datetime.strptime(data['expiry'], '%Y-%m-%d').date()
-        
+
         event = CurrencyEvent(
             user_id=user_id,
             date=event_date,
@@ -684,7 +729,7 @@ def manage_event(event_id):
             CurrencyEvent.id == event_id,
             CurrencyEvent.user_id == user_id
         ).first()
-        
+
         if not event:
             return jsonify({'error': 'Event not found'}), 404
 
@@ -692,9 +737,15 @@ def manage_event(event_id):
             session.delete(event)
             session.commit()
             return jsonify({'status': 'ok'})
-        
+
         # PUT - update
         data = request.json
+
+        # Validate input using Marshmallow schema
+        errors = event_update_schema.validate(data)
+        if errors:
+            return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
         if 'date' in data:
             event.date = datetime.strptime(data['date'], '%Y-%m-%d').date()
         if 'type' in data:
@@ -705,7 +756,7 @@ def manage_event(event_id):
             event.instructor = data['instructor']
         if 'expiry' in data:
             event.expiry = datetime.strptime(data['expiry'], '%Y-%m-%d').date() if data['expiry'] else None
-        
+
         session.commit()
         return jsonify({'status': 'ok'})
     finally:
@@ -742,14 +793,25 @@ def save_settings():
     """Save user settings."""
     user_id = int(get_jwt_identity())
     data = request.json
-    
+
+    # Validate input using Marshmallow schema
+    errors = settings_schema.validate(data)
+    if errors:
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
     session = database.get_session()
     try:
         settings = session.query(UserSettings).filter(UserSettings.user_id == user_id).first()
         if not settings:
             settings = UserSettings(user_id=user_id)
             session.add(settings)
-        
+            try:
+                session.flush()
+            except Exception:
+                # Race condition: another request created settings concurrently
+                session.rollback()
+                settings = session.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+
         if 'regulation' in data:
             settings.regulation = data['regulation']
         if 'home_airport' in data:
@@ -758,7 +820,7 @@ def save_settings():
             settings.currency_view = data['currency_view']
         if 'time_format' in data:
             settings.time_format = data['time_format']
-        
+
         session.commit()
         return jsonify({'status': 'ok'})
     finally:
@@ -1006,17 +1068,21 @@ def admin_flights():
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 25, type=int)
 
-        query = session.query(Flight).order_by(Flight.date.desc())
-        total = query.count()
-        flights = query.offset((page - 1) * per_page).limit(per_page).all()
+        # Fetch flights with user data in a single query to avoid N+1 problem
+        from sqlalchemy.orm import joinedload
+        flights_with_users = session.query(Flight).options(
+            joinedload(Flight.user)
+        ).order_by(Flight.date.desc()).offset((page - 1) * per_page).limit(per_page).all()
+        
+        # Get total count for pagination
+        total = session.query(Flight).count()
 
         flight_list = []
-        for f in flights:
-            user = session.query(User).get(f.user_id)
+        for f in flights_with_users:
             flight_list.append({
                 'id': f.id,
                 'user_id': f.user_id,
-                'user_email': user.email if user else 'Unknown',
+                'user_email': f.user.email if f.user else 'Unknown',
                 'date': f.date.isoformat() if f.date else None,
                 'aircraft_reg': f.aircraft_reg,
                 'air_time': f.air_time,
