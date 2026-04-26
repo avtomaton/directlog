@@ -517,7 +517,7 @@ export default function SettingsPage({ settings, templates, onSave, onSaveTempla
                       <label key={key} className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
-                          checked={editingTemplate.defaults?.[key] || false}
+                          checked={!!editingTemplate.defaults?.[key]}
                           onChange={e => {
                             const newDefaults = { ...editingTemplate.defaults };
                             if (e.target.checked) {
