@@ -64,13 +64,13 @@ describe('flightUtils', () => {
       expect(result.sunrise.getTime()).toBeLessThan(result.sunset.getTime());
     });
 
-    it('should return sunrise earlier and sunset later in summer vs winter', () => {
+    it('should have longer daylight in summer than winter', () => {
       const summer = calculateSunTimes('2024-06-21', 40.7, -74.0);
       const winter = calculateSunTimes('2024-12-21', 40.7, -74.0);
-      // Summer sunrise should be earlier than winter sunrise
-      expect(summer.sunrise.getHours()).toBeLessThanOrEqual(winter.sunrise.getHours());
-      // Summer sunset should be later than winter sunset
-      expect(summer.sunset.getHours()).toBeGreaterThanOrEqual(winter.sunset.getHours());
+      // Compare daylight duration (timezone-portable: both times shift equally)
+      const summerDayMs = summer.sunset.getTime() - summer.sunrise.getTime();
+      const winterDayMs = winter.sunset.getTime() - winter.sunrise.getTime();
+      expect(summerDayMs).toBeGreaterThan(winterDayMs);
     });
 
     it('should return different times for different dates', () => {
@@ -123,10 +123,15 @@ describe('flightUtils', () => {
     });
 
     it('should calculate night time for a flight extending into night', () => {
-      // Night starts at sunset+30. For a winter date at mid-latitude,
-      // sunset is early (~17:00), so night starts ~17:30.
-      // A flight from 16:00 to 20:00 should have night time after 17:30.
-      const nightHours = calculateNightTime('2024-12-21', '16:00', '20:00', defaultSettings);
+      // Derive flight times relative to sunset so the test is timezone-portable.
+      // Flight starts 1h before sunset, ends 2h after sunset.
+      // Night starts at sunset+30, so there should be ~1.5h of night time.
+      const { sunset } = calculateSunTimes('2024-12-21');
+      const flightStart = new Date(sunset.getTime() - 60 * 60000);
+      const flightEnd = new Date(sunset.getTime() + 120 * 60000);
+      const fmt = (d: Date) =>
+        `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+      const nightHours = calculateNightTime('2024-12-21', fmt(flightStart), fmt(flightEnd), defaultSettings);
       expect(nightHours).toBeGreaterThan(0);
     });
 
